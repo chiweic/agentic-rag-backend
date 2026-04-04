@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.env
+venv/
+.venv/
+*.egg-info/
+dist/
+.ruff_cache/
+.pytest_cache/
+data/
+.codex
+.claude/
+.goose/
+.qwen/
+.windsurf/
