@@ -21,38 +21,51 @@ from app.core.tracing import shutdown_langfuse  # noqa: E402
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize Postgres checkpointer + thread metadata store
-    from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-    from psycopg import AsyncConnection
-
     from app.core.thread_store import init_store
 
     init_providers()
 
-    log.info("Starting up — connecting to Postgres at %s", settings.postgres_uri.split("@")[-1])
-    async with AsyncPostgresSaver.from_conn_string(settings.postgres_uri) as checkpointer:
-        await checkpointer.setup()
+    if settings.postgres_uri:
+        # Production: Postgres-backed checkpointer + thread store
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        from psycopg import AsyncConnection
+
+        log.info(
+            "Starting up — connecting to Postgres at %s",
+            settings.postgres_uri.split("@")[-1],
+        )
+        async with AsyncPostgresSaver.from_conn_string(settings.postgres_uri) as checkpointer:
+            await checkpointer.setup()
+            from app.agent.graph import set_checkpointer
+
+            set_checkpointer(checkpointer)
+            log.info("Checkpointer ready — LangGraph agent initialized")
+
+            conn = await AsyncConnection.connect(settings.postgres_uri, autocommit=False)
+            purged_thread_ids = await init_store(conn)
+            if purged_thread_ids:
+                for thread_id in purged_thread_ids:
+                    await checkpointer.adelete_thread(thread_id)
+                log.info(
+                    "Deleted checkpoint state for %d anonymous threads during ownership migration",
+                    len(purged_thread_ids),
+                )
+            log.info("Thread metadata store ready")
+
+            try:
+                yield
+            finally:
+                await conn.close()
+    else:
+        # CI / test: in-memory backends (no Postgres required)
+        from langgraph.checkpoint.memory import MemorySaver
+
         from app.agent.graph import set_checkpointer
 
-        set_checkpointer(checkpointer)
-        log.info("Checkpointer ready — LangGraph agent initialized")
-
-        # Thread metadata store (separate connection, same database)
-        conn = await AsyncConnection.connect(settings.postgres_uri, autocommit=False)
-        purged_thread_ids = await init_store(conn)
-        if purged_thread_ids:
-            for thread_id in purged_thread_ids:
-                await checkpointer.adelete_thread(thread_id)
-            log.info(
-                "Deleted checkpoint state for %d anonymous threads during ownership migration",
-                len(purged_thread_ids),
-            )
-        log.info("Thread metadata store ready")
-
-        try:
-            yield
-        finally:
-            await conn.close()
+        set_checkpointer(MemorySaver())
+        await init_store()
+        log.info("Starting up — in-memory backends (no Postgres)")
+        yield
 
     log.info("Shutting down — flushing Langfuse")
     shutdown_langfuse()

@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     langfuse_base_url: str = "http://localhost:3002"
 
     # Postgres (thread checkpointer)
-    postgres_uri: str = "postgresql://langgraph:langgraph@localhost:5434/langgraph"
+    postgres_uri: str = ""
 
     # Conversation limits
     max_message_window: int = 20  # messages sent to LLM (full history stays in DB)
