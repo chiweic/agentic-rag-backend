@@ -27,19 +27,29 @@ async def lifespan(app: FastAPI):
 
     if settings.postgres_uri:
         # Production: Postgres-backed checkpointer + thread store
+        # Use a connection pool so concurrent requests don't collide on a
+        # single AsyncConnection ("another command is already in progress").
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
         from psycopg import AsyncConnection
+        from psycopg.rows import dict_row
+        from psycopg_pool import AsyncConnectionPool
 
         log.info(
             "Starting up — connecting to Postgres at %s",
             settings.postgres_uri.split("@")[-1],
         )
-        async with AsyncPostgresSaver.from_conn_string(settings.postgres_uri) as checkpointer:
+        async with AsyncConnectionPool(
+            conninfo=settings.postgres_uri,
+            min_size=2,
+            max_size=10,
+            kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+        ) as pool:
+            checkpointer = AsyncPostgresSaver(conn=pool)
             await checkpointer.setup()
             from app.agent.graph import set_checkpointer
 
             set_checkpointer(checkpointer)
-            log.info("Checkpointer ready — LangGraph agent initialized")
+            log.info("Checkpointer ready — LangGraph agent initialized (pooled)")
 
             conn = await AsyncConnection.connect(settings.postgres_uri, autocommit=False)
             purged_thread_ids = await init_store(conn)

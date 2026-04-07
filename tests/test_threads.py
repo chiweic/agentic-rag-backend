@@ -396,6 +396,41 @@ async def test_integration_full_conversation_cycle(client):
     assert data["messages"][2]["content"][0]["text"] == "and again"
 
 
+@pytest.mark.asyncio
+async def test_concurrent_stream_requests(client):
+    """Verify concurrent requests on the same thread don't collide.
+
+    Regression test for: psycopg.OperationalError: another command is already
+    in progress — caused by sharing a single connection across requests.
+    """
+    import asyncio
+
+    # Create two separate threads
+    resp1 = await client.post("/threads", json={})
+    resp2 = await client.post("/threads", json={})
+    tid1 = resp1.json()["thread_id"]
+    tid2 = resp2.json()["thread_id"]
+
+    # Fire two stream requests concurrently
+    async def stream(tid, msg):
+        return await client.post(
+            f"/threads/{tid}/runs/stream",
+            json={"input": {"messages": [{"role": "user", "content": msg}]}},
+        )
+
+    r1, r2 = await asyncio.gather(
+        stream(tid1, "hello from thread 1"),
+        stream(tid2, "hello from thread 2"),
+    )
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert "event: messages/complete" in r1.text
+    assert "event: messages/complete" in r2.text
+    assert "event: error" not in r1.text
+    assert "event: error" not in r2.text
+
+
 def _parse_sse(text: str) -> list[dict]:
     """Parse SSE text into list of {event, data} dicts."""
     events = []
