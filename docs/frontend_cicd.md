@@ -1,284 +1,218 @@
-# CI/CD Plan: Frontend Quality Gate
+# Frontend CI/CD Baseline
 
-## Problem
+## Purpose
 
-`frontend-v1/` has been developed alongside 5 backend milestones with no CI pipeline, no lint enforcement, and no unit tests. The codebase has:
+This document records the current maintenance baseline for [`frontend-v1`](/home/chiweic/repository/backend/frontend-v1).
 
-- **9 Playwright e2e specs** — comprehensive but require live backend (local LLM + Postgres)
-- **0 unit tests** — no Vitest/Jest setup; store logic and API client are untested in isolation
-- **No linter** — no ESLint or Biome configured
-- **TypeScript strict mode** — `tsc --noEmit` passes clean (0 errors)
-- **No pre-commit hooks** — nothing prevents broken code from being committed
-- **No CI workflow** — no automated checks on push/PR
+The goal is not to describe every future improvement. The goal is to define:
 
-The e2e tests cover the happy path well, but the core state management logic (`chat-store.ts`, `auth-store.ts`) has complex edge cases (thread reconciliation, optimistic rollback, sync status state machine) that are better pinned with fast unit tests.
+- what currently counts as a passing local gate for `frontend-v1`
+- what is safe to commit now
+- what remains known maintenance debt
 
-## Current Inventory
+This is the baseline that should be used before broadening CI scope further.
 
-| Category | Status |
-|----------|--------|
-| TypeScript strict mode | Enabled, 0 errors |
-| Lint (ESLint/Biome) | Not configured |
-| Unit tests | None |
-| E2E tests (Playwright) | 9 spec files, require live infra |
-| Pre-commit hooks | None |
-| CI pipeline | None |
+## Current Local Gates
 
-### Testable Modules (`lib/`)
+The following commands are the current local quality gates for [`frontend-v1`](/home/chiweic/repository/backend/frontend-v1):
 
-| Module | Complexity | What to unit-test |
-|--------|-----------|-------------------|
-| `chat-store.ts` | High | `createThread`, `linkThreadToBackend`, `reconcileBackendThreads`, `renameThread`, `deleteThread`, sync status transitions, optimistic rollback, `resetForAuthBoundary` |
-| `auth-store.ts` | Medium | `signInWithToken`, `signOut`, JWT decode, provider detection, `invalidateAuthSession`, `resetForAuthBoundary` |
-| `backend-threads.ts` | Medium | Request formatting, SSE event parsing, 401 → `BackendAuthError`, auth header injection |
-| `auth-client.ts` | Low | `createDevToken` request shape |
-| `assisted-learning.ts` | Low | Auth header injection, 401 handling |
-| `clerk.ts` | Low | `isClerkEnabled` flag logic |
-| `utils.ts` | Trivial | `cn()` class merging |
-
-## Step 1: TypeScript Type Check (CI gate)
-
-**What:** Add `tsc --noEmit` as a CI job. Already passes — zero effort to enforce.
-
-**Action:**
-1. Add `"typecheck": "tsc --noEmit"` to `package.json` scripts
-2. Add CI workflow job (see Step 4)
-
-**Why first:** Cheapest gate, catches broken imports, missing types, bad refactors. Runs in ~5s.
-
-## Step 2: Linter Setup (Biome)
-
-**What:** Add a fast linter/formatter. Biome is recommended over ESLint for this project because:
-- Single tool for both lint and format (like ruff for Python)
-- Fast (written in Rust, sub-second on this codebase)
-- Zero plugins needed — built-in TypeScript + React support
-- No dependency on ESLint plugin ecosystem
-
-**Action:**
-1. Install: `npm install --save-dev @biomejs/biome`
-2. Create `biome.json`:
-```json
-{
-  "$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
-  "organizeImports": {
-    "enabled": true
-  },
-  "linter": {
-    "enabled": true,
-    "rules": {
-      "recommended": true
-    }
-  },
-  "formatter": {
-    "enabled": true,
-    "indentStyle": "space",
-    "indentWidth": 2
-  },
-  "files": {
-    "ignore": [".next/", "node_modules/", "test-results/"]
-  }
-}
-```
-3. Add scripts to `package.json`:
-```json
-"lint": "biome check .",
-"lint:fix": "biome check --fix .",
-"format": "biome format --write .",
-"format:check": "biome format ."
-```
-4. Fix any initial violations
-5. Verify: `npx biome check .` → 0 errors
-
-**Current violation count:** TBD — run after install to assess.
-
-## Step 3: Unit Tests with Vitest
-
-**What:** Add Vitest for testing store logic and API clients in isolation — no browser, no backend needed.
-
-**Action:**
-1. Install:
 ```bash
-npm install --save-dev vitest @testing-library/jest-dom
-```
-2. Add `vitest.config.ts`:
-```typescript
-import { defineConfig } from "vitest/config";
-import path from "path";
-
-export default defineConfig({
-  test: {
-    environment: "node",
-    include: ["tests/unit/**/*.test.ts"],
-  },
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "."),
-    },
-  },
-});
-```
-3. Add script: `"test": "vitest run"`, `"test:watch": "vitest"`
-4. Write unit tests (priority order):
-
-### Priority 1: `chat-store.ts` (highest complexity)
-```
-tests/unit/chat-store.test.ts
-- createThread creates local thread with correct defaults
-- linkThreadToBackend sets backendThreadId and status "linked"
-- reconcileBackendThreads merges without duplicating existing linked threads
-- reconcileBackendThreads adds new backend-only threads
-- renameThread updates title locally
-- deleteThread removes from threads map and reorders
-- deleteThread with error restores thread at original index
-- resetForAuthBoundary clears linked threads, keeps default
-- sync status transitions: local → syncing → linked, local → syncing → error
+cd /home/chiweic/repository/backend/frontend-v1
+npm run typecheck
+npm run lint
+npm test
 ```
 
-### Priority 2: `auth-store.ts`
-```
-tests/unit/auth-store.test.ts
-- signInWithToken decodes JWT and sets profile
-- signInWithToken detects provider from issuer (dev, clerk, google)
-- signOut clears token and profile
-- invalidateAuthSession triggers sign-out
-- resetForAuthBoundary clears linked threads via chat-store
-```
+### Current Result
 
-### Priority 3: `backend-threads.ts`
-```
-tests/unit/backend-threads.test.ts
-- createBackendThread sends POST /threads with auth header
-- listBackendThreads sends GET /threads with auth header
-- 401 response throws BackendAuthError
-- streamBackendThreadRun parses SSE events correctly
-- requests omit Authorization header when no token available
-```
+As of this maintenance pass:
 
-**Estimated test count:** ~25-30 unit tests.
-**Run time:** <2s (no browser, no network).
+- `npm run typecheck`: passes
+- `npm test`: passes
+- `npm run lint`: completes without errors, but still reports warnings
 
-## Step 4: GitHub Actions CI
+So the current commit-ready interpretation is:
 
-**What:** CI pipeline on push/PR to `frontend-v1/` paths.
+- typecheck must pass
+- unit tests must pass
+- lint must not introduce errors
+- known lint warnings are technical debt, not current blockers
 
-File: `.github/workflows/frontend-ci.yml`
+## Verified Local Status
 
-```yaml
-name: Frontend CI
+### Type Check
 
-on:
-  push:
-    paths:
-      - "frontend-v1/**"
-  pull_request:
-    paths:
-      - "frontend-v1/**"
+Command:
 
-defaults:
-  run:
-    working-directory: frontend-v1
-
-jobs:
-  typecheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: frontend-v1/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: frontend-v1/package-lock.json
-      - run: npm ci
-      - run: npm run lint
-
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: frontend-v1/package-lock.json
-      - run: npm ci
-      - run: npm test
-```
-
-**Note:** E2E tests (`test:e2e`) are excluded from CI — they require a running backend with local LLM access. Run locally before releases.
-
-## Step 5: Pre-Commit Hooks
-
-**What:** Run type check + lint on staged frontend files before commit.
-
-Two options:
-
-### Option A: Biome-only (recommended — fast, no extra deps)
-Add to the existing root `.pre-commit-config.yaml`:
-```yaml
-  - repo: https://github.com/biomejs/pre-commit
-    rev: "v2.0.0"
-    hooks:
-      - id: biome-check
-        additional_dependencies: ["@biomejs/biome@2.0.0"]
-        args: ["--files-ignore-unknown=true"]
-```
-
-### Option B: lint-staged via Husky (alternative)
 ```bash
-npm install --save-dev husky lint-staged
-npx husky init
+npm run typecheck
 ```
 
-`.lintstagedrc`:
-```json
-{
-  "*.{ts,tsx}": ["biome check --fix", "biome format --write"]
-}
+Status:
+
+- passes
+
+Meaning:
+
+- the TypeScript baseline is healthy enough to gate commits
+
+### Unit Tests
+
+Command:
+
+```bash
+npm test
 ```
 
-Option A integrates with the backend's existing pre-commit setup. Option B is self-contained within `frontend-v1/`.
+Status:
 
-## Step 6 (Optional): E2E in CI
+- passes
+- `49/49` tests passing at the time this document was updated
 
-**What:** Playwright e2e as a manual-trigger or nightly job.
+Meaning:
 
-Same constraint as backend — requires live LLM endpoint. Options:
-- **`workflow_dispatch`** — manual trigger before releases
-- **Nightly schedule** — catch regressions overnight
-- Requires backend running with `AUTH_DEV_MODE=true` + Postgres + LLM
+- the current Vitest unit-test baseline is working and should be part of the gate
 
-Recommend deferring until a CI-accessible LLM mock or test double is available.
+### Lint
 
-## Execution Order
+Command:
 
-| Phase | Action | Blocks on | Can run in CI |
-|-------|--------|-----------|---------------|
-| 1 | Type check gate (Step 1) | nothing | Yes |
-| 2 | Biome lint/format (Step 2) | nothing | Yes |
-| 3 | Vitest unit tests (Step 3) | nothing | Yes |
-| 4 | GitHub Actions CI (Step 4) | Steps 1-3 | — |
-| 5 | Pre-commit hooks (Step 5) | Step 2 | — |
-| 6 | E2E in CI (Step 6) | optional | No (needs LLM) |
+```bash
+npm run lint
+```
 
-Steps 1, 2, and 3 can be done in parallel — no dependencies between them.
+Status:
 
-## Success Criteria
+- completes
+- currently reports warnings
+- no blocking lint errors at the moment
 
-- `tsc --noEmit` → 0 errors
-- `biome check .` → 0 errors
-- `vitest run` → ~25+ tests pass
-- Every push to `frontend-v1/` triggers CI (typecheck + lint + unit test)
-- Pre-commit hooks prevent broken commits locally
-- E2E tests remain runnable locally: `npx playwright test`
+Important note:
+
+- `frontend-v1/biome.json` still declares the older `2.0.0` schema while the installed CLI is newer
+- Biome also reports current warnings in:
+  - [`frontend-v1/app/MyRuntimeProvider.tsx`](/home/chiweic/repository/backend/frontend-v1/app/MyRuntimeProvider.tsx)
+  - [`frontend-v1/components/assistant-ui/attachment.tsx`](/home/chiweic/repository/backend/frontend-v1/components/assistant-ui/attachment.tsx)
+  - unit-test files with non-null assertions
+
+These are known cleanup items, but they are not currently being treated as commit blockers.
+
+## What Is In Scope For Commit Right Now
+
+For `frontend-v1`, the safe commit baseline is:
+
+- code that keeps `typecheck` passing
+- code that keeps `npm test` passing
+- code that does not worsen lint into actual failing errors
+- documentation updates that match the current verified gate behavior
+
+This is intentionally narrower than “all browser E2E must pass.”
+
+## E2E Status
+
+Browser E2E is still under active maintenance and redesign.
+
+Relevant document:
+
+- [`docs/e2e_test_plan.md`](/home/chiweic/repository/backend/docs/e2e_test_plan.md)
+
+Current position:
+
+- Playwright remains the web E2E framework
+- the suite is being reduced toward a smaller contract-focused `Core`
+- the previous E2E set was too coupled to current UI structure
+- E2E should not currently be treated as the only frontend commit gate
+
+### Current Practical Rule
+
+For now:
+
+- local gates for commit = typecheck + lint + unit tests
+- E2E is important, but still being stabilized and reorganized
+
+That means E2E failures should be triaged seriously, but they should not prevent every frontend maintenance commit while the suite itself is still being redesigned.
+
+## Current Test/Tool Inventory
+
+### Implemented
+
+- TypeScript type checking
+- Biome lint/format scripts
+- Vitest unit tests
+- Playwright browser E2E
+
+### Present in `package.json`
+
+From [`frontend-v1/package.json`](/home/chiweic/repository/backend/frontend-v1/package.json):
+
+- `typecheck`
+- `lint`
+- `lint:fix`
+- `format`
+- `format:check`
+- `test`
+- `test:watch`
+- `test:e2e`
+- `test:e2e:ui`
+
+## CI Direction
+
+The repository currently has backend CI in:
+
+- [ci.yml](/home/chiweic/repository/backend/.github/workflows/ci.yml)
+
+But `frontend-v1` does not yet have a dedicated frontend workflow file checked in.
+
+The intended next CI step should be a separate frontend workflow that runs:
+
+1. `npm ci`
+2. `npm run typecheck`
+3. `npm run lint`
+4. `npm test`
+
+This frontend workflow should be kept separate from backend CI.
+
+## Recommended Frontend Workflow File
+
+Suggested file:
+
+- `.github/workflows/frontend-ci.yml`
+
+Suggested scope:
+
+- trigger on `frontend-v1/**`
+- run in `frontend-v1` working directory
+- use Node 22
+- cache npm deps via `frontend-v1/package-lock.json`
+
+The first version should only enforce the current passing baseline:
+
+- typecheck
+- lint
+- unit tests
+
+Do not make browser E2E a required CI gate until the `Core` web E2E suite is intentionally stabilized.
+
+## Known Maintenance Debt
+
+The following items are known but not currently required to block commits:
+
+- Biome schema version mismatch in [`frontend-v1/biome.json`](/home/chiweic/repository/backend/frontend-v1/biome.json)
+- Biome warnings in React hook dependencies and accessibility/performance issues
+- web E2E scope is still being redesigned around realistic user contracts
+- browser-engine differences still exist in Playwright behavior for some streaming scenarios
+
+These are real issues, but they belong to the next cleanup passes, not to the minimum commit-ready baseline.
+
+## Commit Policy For This Maintenance Pass
+
+When committing `frontend-v1` maintenance work now, the expectation is:
+
+- commit only code that passes the current local frontend gates
+- do not wait for all historical E2E scenarios to be redesigned first
+- keep CI/CD documentation aligned with what is actually enforced today
+
+In short:
+
+- `frontend-v1` commit gate today = `typecheck + lint + unit tests`
+- E2E remains active maintenance work, not yet the sole release/commit blocker

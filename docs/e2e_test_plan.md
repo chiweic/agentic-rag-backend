@@ -41,6 +41,42 @@ So the strategy is:
 - reduce brittle UI-coupled assertions
 - reorganize coverage by criticality and contract level
 
+## Browser Support
+
+The web support policy for [`frontend-v1`](/home/chiweic/repository/backend/frontend-v1) is intentionally narrow.
+
+We do not assume support for every browser.
+
+The supported browser baseline is:
+
+- latest stable Chrome / Chromium
+- WebKit, as the representative iOS browser engine
+
+This means:
+
+- standalone web support is defined around modern evergreen browser behavior
+- Safari/WebKit compatibility matters because it represents the iOS web surface
+- unsupported or lower-priority browsers should not define the core E2E strategy
+
+## Browser Matrix And E2E Implication
+
+The browser support decision directly shapes E2E expectations.
+
+Tier-1 / Core web E2E should work on:
+
+1. Chromium
+2. WebKit
+
+That is the required browser pair when authoring and evaluating the `Core` suite.
+
+So `Core` tests should:
+
+- avoid Chromium-only assumptions
+- avoid selectors or interaction patterns that depend on desktop-only layout quirks
+- be written so they remain valid in both Chromium and WebKit
+
+Secondary or optional browser coverage can exist later, but it should not redefine the core gate.
+
 ## Environment
 
 Frontend test runner:
@@ -281,6 +317,17 @@ The tier model should eventually map into CI execution policy:
 - `Features`: run regularly, but may be a separate required job
 - `Add-ons`: optional, scheduled, or explicitly non-blocking
 
+For web browser coverage, the intended order is:
+
+- `Core`
+  - Chromium required
+  - WebKit required
+- `Features`
+  - Chromium first
+  - WebKit as secondary or staged expansion
+- `Add-ons`
+  - optional wider browser coverage only if useful
+
 This is important because maintenance cost is now part of the design.
 The suite should not be allowed to grow as one flat required block.
 
@@ -295,3 +342,32 @@ The next maintenance step for web E2E should be:
    release-critical
 
 That is the agreed direction for the next E2E cleanup cycle.
+
+## Active Vs Archived Specs
+
+To reduce confusion during the rewrite, the web E2E suite is now split into:
+
+- active specs in [`frontend-v1/tests/e2e/`](/home/chiweic/repository/backend/frontend-v1/tests/e2e)
+- archived legacy specs in [`frontend-v1/tests/e2e/archive/`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/archive)
+
+Current active files:
+
+- [`frontend-v1/tests/e2e/core.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/core.spec.ts)
+- [`frontend-v1/tests/e2e/helpers.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/helpers.ts)
+
+Archived files:
+
+- [`frontend-v1/tests/e2e/archive/auth-flow.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/archive/auth-flow.spec.ts)
+- [`frontend-v1/tests/e2e/archive/auth-mid-session.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/archive/auth-mid-session.spec.ts)
+- [`frontend-v1/tests/e2e/archive/multi-tab.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/archive/multi-tab.spec.ts)
+- [`frontend-v1/tests/e2e/archive/streaming-cancel.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/archive/streaming-cancel.spec.ts)
+- [`frontend-v1/tests/e2e/archive/thread-bulk.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/archive/thread-bulk.spec.ts)
+- [`frontend-v1/tests/e2e/archive/thread-edge.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/archive/thread-edge.spec.ts)
+- [`frontend-v1/tests/e2e/archive/thread-hydration.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/archive/thread-hydration.spec.ts)
+- [`frontend-v1/tests/e2e/archive/thread-sync-failure.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/archive/thread-sync-failure.spec.ts)
+
+The rule going forward is:
+
+- only active specs define the current gate
+- archived specs are reference material, not current required coverage
+- when an archived scenario is needed again, it should be restored intentionally and rewritten to match the current contract-first style before becoming active

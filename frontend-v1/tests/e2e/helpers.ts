@@ -60,7 +60,7 @@ export const sendMessage = async (page: Page, text: string) => {
   await page.getByRole("button", { name: "Send message" }).click();
 };
 
-export const waitForRunToSettle = async (page: Page, timeout = 45_000) => {
+export const waitForRunToComplete = async (page: Page, timeout = 45_000) => {
   await expect(page.getByRole("button", { name: "Send message" })).toBeVisible({
     timeout,
   });
@@ -68,8 +68,10 @@ export const waitForRunToSettle = async (page: Page, timeout = 45_000) => {
     page.getByRole("button", { name: "Stop generating" }),
   ).toHaveCount(0, {
     timeout,
-  });
+    });
 };
+
+export const waitForRunToSettle = waitForRunToComplete;
 
 export const assistantMessages = (page: Page) =>
   page.locator('[data-role="assistant"]');
@@ -87,6 +89,8 @@ export const waitForAssistantText = async (page: Page, timeout = 30_000) => {
     })
     .not.toBe("");
 };
+
+export const waitForAssistantTextStart = waitForAssistantText;
 
 export const activeThreadRow = (page: Page) =>
   page.locator('[data-testid="thread-item"][data-active="true"]').first();
