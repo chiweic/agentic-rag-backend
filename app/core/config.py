@@ -32,5 +32,21 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "info"
 
+    # Auth
+    google_oidc_client_id: str = ""
+    google_oidc_issuer: str = "https://accounts.google.com"
+    google_oidc_jwks_url: str = "https://www.googleapis.com/oauth2/v3/certs"
+    auth_jwks_cache_ttl_seconds: int = 3600
+    auth_allowed_clock_skew_seconds: int = 30
+    clerk_oidc_issuer: str = ""
+    clerk_oidc_jwks_url: str = ""
+    clerk_authorized_parties: str = ""
+
+    # Dev-only auth bypass for Playwright / integration testing.
+    # When True, a fresh RSA keypair is generated at startup and POST /auth/dev-token
+    # is exposed. Must be False in production.
+    auth_dev_mode: bool = False
+    auth_dev_issuer: str = "https://dev.local"
+
 
 settings = Settings()
