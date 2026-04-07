@@ -73,7 +73,9 @@ async def chat_stream(request: ChatRequest):
     )
 
     async def event_generator():
-        async for event in agent_module.agent_graph.astream_events(state, config=config, version="v2"):
+        async for event in agent_module.agent_graph.astream_events(
+            state, config=config, version="v2"
+        ):
             if event["event"] == "on_chat_model_stream":
                 chunk: AIMessageChunk = event["data"]["chunk"]
                 if chunk.content:

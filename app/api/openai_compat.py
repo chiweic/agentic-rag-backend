@@ -57,7 +57,10 @@ async def chat_completions(request: OpenAIChatRequest):
     user_msg = next((m.content for m in request.messages if m.role == "user"), "")
     log.info(
         "OpenAI-compat | model=%s stream=%s user=%s | %s",
-        request.model, request.stream, request.user, user_msg[:80],
+        request.model,
+        request.stream,
+        request.user,
+        user_msg[:80],
     )
 
     state = AgentState(
@@ -108,9 +111,7 @@ async def _stream_response(state: AgentState, config: dict, model: str):
                     id=completion_id,
                     created=created,
                     model=model,
-                    choices=[
-                        OpenAIStreamChoice(delta=OpenAIDelta(content=chunk.content))
-                    ],
+                    choices=[OpenAIStreamChoice(delta=OpenAIDelta(content=chunk.content))],
                 )
                 yield f"data: {stream_chunk.model_dump_json()}\n\n"
 

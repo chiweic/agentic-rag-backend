@@ -55,7 +55,10 @@ def generate(state: AgentState) -> dict:
 
     log.info(
         "generate | %d messages (%d in history, %d sent to LLM) | model=%s",
-        total_before, total_before - 1, len(messages) - 1, settings.openai_model,
+        total_before,
+        total_before - 1,
+        len(messages) - 1,
+        settings.openai_model,
     )
 
     response: AIMessage = llm.invoke(messages)

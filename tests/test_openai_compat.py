@@ -54,7 +54,11 @@ async def test_chat_completions_streaming(client):
     # First chunk has role
     assert chunks[0]["choices"][0]["delta"]["role"] == "assistant"
     # Last real chunk has finish_reason
-    last_data_line = [l for l in resp.text.strip().split("\n") if l.startswith("data: ") and l != "data: [DONE]"][-1]
+    last_data_line = [
+        line
+        for line in resp.text.strip().split("\n")
+        if line.startswith("data: ") and line != "data: [DONE]"
+    ][-1]
     last_chunk = json.loads(last_data_line[6:])
     assert last_chunk["choices"][0]["finish_reason"] == "stop"
     # Ends with [DONE]
