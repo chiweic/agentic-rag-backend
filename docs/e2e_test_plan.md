@@ -2,270 +2,296 @@
 
 ## Purpose
 
-This document describes the browser-level regression coverage for `frontend-v1`.
+This document defines the intended browser-level E2E strategy for [`frontend-v1`](/home/chiweic/repository/backend/frontend-v1).
 
-The current E2E suite is focused on:
+The main lesson from recent maintenance work is that the suite should protect
+stable product contracts, not the current UI layout. As the web interface keeps
+evolving, tests that depend on exact sidebar composition, button placement, or
+specific interaction choreography become expensive and noisy.
 
-- auth boundary behavior
-- thread metadata hydration
-- linked-thread history loading
-- signed-in vs signed-out routing and API usage
+So the E2E suite should answer:
 
-The tests are implemented with Playwright in:
+- can a user ask a question and get an answer?
+- do signed-in threads behave correctly?
+- do rename/delete/logout boundaries preserve the right data invariants?
+- does streaming visibly start?
+- do important thread-list features still work?
 
-- [`auth-flow.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/auth-flow.spec.ts)
-- [`auth-mid-session.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/auth-mid-session.spec.ts)
-- [`thread-hydration.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/thread-hydration.spec.ts)
-- [`thread-edge.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/thread-edge.spec.ts)
-- [`thread-sync-failure.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/thread-sync-failure.spec.ts)
-- [`thread-bulk.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/thread-bulk.spec.ts)
-- [`streaming-cancel.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/streaming-cancel.spec.ts)
-- [`multi-tab.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/multi-tab.spec.ts)
-- shared helpers in [`helpers.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/helpers.ts)
+It should avoid overfitting to:
+
+- exact placement of controls
+- exact sidebar visual structure
+- specific local choreography that is likely to change in later UI cycles
+
+## Framework Decision
+
+The web E2E framework remains Playwright.
+
+Reason:
+
+- it is a good fit for full browser flows
+- it supports network assertions well
+- it is appropriate for auth, reload, hydration, and multi-tab behavior
+- the current maintenance issue is not Playwright itself, but the level of
+  abstraction used by some existing tests
+
+So the strategy is:
+
+- keep Playwright
+- reduce brittle UI-coupled assertions
+- reorganize coverage by criticality and contract level
 
 ## Environment
 
 Frontend test runner:
 
-- Playwright config: [`playwright.config.ts`](/home/chiweic/repository/backend/frontend-v1/playwright.config.ts)
-- frontend dev server is auto-started by Playwright on `http://127.0.0.1:3005`
+- Playwright config: [`frontend-v1/playwright.config.ts`](/home/chiweic/repository/backend/frontend-v1/playwright.config.ts)
+- frontend dev server is started by Playwright on `http://127.0.0.1:3005`
 
 Backend requirement:
 
-- backend must be started manually on `http://localhost:8081`
-- run backend with `AUTH_DEV_MODE=true`
+- backend should be started manually on `http://127.0.0.1:7081`
+- backend should run with `AUTH_DEV_MODE=true`
 
 Recommended backend command:
 
 ```bash
-AUTH_DEV_MODE=true uvicorn app.main:app --reload --host 0.0.0.0 --port 8081
+cd /home/chiweic/repository/backend
+AUTH_DEV_MODE=true ./venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 7081
 ```
 
-Recommended frontend test command:
+Recommended frontend E2E command:
 
 ```bash
-cd frontend-v1
+cd /home/chiweic/repository/backend/frontend-v1
 npm run test:e2e
 ```
 
-## Test Strategy
+## Auth Strategy
 
-The suite intentionally disables Clerk for Playwright and uses the dev-token path instead.
+For Playwright, the suite intentionally uses the dev-token auth path rather than
+real Clerk UI.
 
 Reason:
 
-- real third-party login is brittle in CI and local automation
-- the app already has a test-safe auth path through `POST /auth/dev-token`
-- the goal of this suite is product regression coverage, not Clerk vendor UI testing
+- vendor login UI is not the product contract we need to regression-test here
+- real third-party auth is brittle in local automation and CI
+- the purpose of this suite is to verify product behavior after auth state is set
 
-So the E2E suite validates:
+So the suite should validate:
 
-- app auth state transitions
+- signed-out behavior
+- signed-in behavior
+- auth-boundary resets
 - protected backend access
-- thread hydration behavior
-- logout/login boundary behavior
 
-without depending on live Google or Clerk UI flows.
+without treating Clerk-hosted UI as the core automation target.
 
-## Coverage Structure
+## Test Tiers
 
-The intended structure for this suite is:
+The E2E suite should be reorganized into three tiers:
 
-1. Happy paths
-2. Anonymous-user paths
-3. Edge and boundary cases
+1. `Core`
+2. `Features`
+3. `Add-ons`
 
-That means the suite should first protect the main product flows that must always work, then expand into limit and regression coverage.
+This is the primary organizing principle.
 
-Recommended grouping:
+The goal is:
 
-- happy paths
-  - signed-in linked thread flow
-  - signed-in thread reload and reopen flow
-  - protected Assisted Learning flow
-- anonymous paths
-  - signed-out local chat baseline
-  - signed-out gating for protected pages
-- edge and boundary cases
-  - auth-boundary thread reopen
-  - linked/local coexistence across reload
-  - delete persistence
-  - long titles
-  - large thread counts
-  - query/search/filter limits if those features are added
+- `Core` must pass and should be release-gating
+- `Features` should pass and protect important product flows
+- `Add-ons` are useful, but must not dominate maintenance time
 
-## Current Coverage
+## Core
 
-### Auth Flow
+`Core` tests protect the minimum browser contracts that must work.
 
-[`auth-flow.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/auth-flow.spec.ts)
+These should stay few, stable, and strongly product-oriented.
 
-Covered scenarios:
+Target coverage:
 
-1. Signed-out baseline chat still uses `/v1/chat/completions`
-2. Signed-out users are gated from `/assisted-learning`
-3. Dev-token sign-in unlocks protected thread flow and Assisted Learning
-4. Logout clears linked-thread shells and returns to the signed-out baseline thread
+- app boots successfully
+- signed-out basic thread flow works
+- user can send a query and receive an answer
+- signed-in linked-thread flow works
+- thread rename works
+- thread delete works
+- logout resets auth-bound state correctly
+- streaming visibly starts for a long answer
+  - first token / first partial response appears
 
-### Mid-Session Auth Failures
+Recommended examples for `Core`:
 
-[`auth-mid-session.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/auth-mid-session.spec.ts)
+- anonymous query/answer path
+- signed-in linked-thread query/answer path
+- rename active thread
+- delete linked thread
+- logout returns app to signed-out baseline
+- long-answer streaming begins with visible partial output
 
-Covered scenarios:
+These tests should prefer assertions like:
 
-1. `401` on next protected action (PATCH rename) signs the user out and wipes linked-thread shells
-2. `401` returned by `POST /threads/{id}/runs/stream` mid-run signs the user out and resets chat state
+- answer appears
+- thread exists or no longer exists
+- auth state changes from signed-in to anonymous
+- request path uses `/threads/.../runs/stream` instead of `/v1/chat/completions`
+- first streamed token becomes visible
 
-### Thread Sync Failure
+They should avoid assertions like:
 
-[`thread-sync-failure.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/thread-sync-failure.spec.ts)
+- exact lower-left placement of account control
+- exact sidebar card markup
+- exact button alignment inside a row
 
-Covered scenarios:
+## Features
 
-1. `PATCH` returning 500 keeps the optimistic local title and flips `syncStatus` to `Sync error`; a retry rename after recovery restores `Linked`
-2. `DELETE` returning 500 reinserts the deleted thread at its original sidebar index with `syncStatus` `Sync error`
+`Features` tests protect important user-facing behavior beyond the minimal gate.
 
-### Streaming Cancellation
+These are still valuable, but they are not the absolute must-pass baseline.
 
-[`streaming-cancel.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/streaming-cancel.spec.ts)
+Target coverage:
 
-Covered scenarios:
+- thread-list hydration
+- create thread
+- remove thread
+- thread switching
+- linked and local-only coexistence
+- reload persistence
+- protected page gating
+- backend sync failure UX for rename/delete
+- multi-tab behavior, if we decide it remains product-relevant
 
-1. Clicking "Stop generating" mid-run returns the composer to the idle state, preserves the user message locally, and allows a follow-up send
+Recommended examples for `Features`:
 
-Documents a known backend behavior: LangGraph's `astream_events` does not currently propagate client disconnects, so the server continues generation after the client aborts. The test does not depend on this.
+- linked thread appears after sign-in hydration
+- switching between threads changes active conversation
+- local-only and linked threads coexist without duplication
+- reload preserves expected thread state
+- protected route is gated when signed out
+- rename failure preserves optimistic title and shows a sync error
+- delete failure restores the thread and shows a sync error
 
-### Bulk Thread Hydration
+These tests should still use durable product semantics, but they may accept
+more runtime complexity than `Core`.
 
-[`thread-bulk.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/thread-bulk.spec.ts)
+## Add-ons
 
-Covered scenarios:
+`Add-ons` are useful but non-blocking.
 
-1. 50 linked threads seeded via direct API calls hydrate via `GET /threads` within a 5 s latency budget, render exactly once in the sidebar, and come back in newest-first order.
+They are the first candidates to quarantine, run separately, or mark as
+lower-priority if they become expensive to maintain.
 
-This test depends on the `list_threads` title-fallback cleanup — title backfill is now done at run time in `POST /threads/{id}/runs/stream`, so `GET /threads` is a single indexed DB query with no per-thread checkpoint read.
+Target coverage:
 
-### Multi-Tab
+- very long queries
+- very long answers
+- bulk hydration and large thread counts
+- cancellation edge cases
+- unusual persisted-state scenarios
+- heavier endurance and scale behavior
 
-[`multi-tab.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/multi-tab.spec.ts)
+Recommended examples for `Add-ons`:
 
-Covered scenarios:
+- long query / long answer endurance
+- very large thread-list hydration
+- cancellation during streaming
+- invalid persisted auth/token edge case
+- multi-step recovery edge cases after unusual state corruption
 
-1. A backend-linked thread created in tab A is visible in tab B after tab B signs in independently, via backend-as-source-of-truth hydration
-2. Tab B clearing `sessionStorage` and reloading does not affect tab A's session (per-tab auth isolation verified)
+These should not block everyday development if they become flaky or slow.
 
-What this protects:
+## Current Test Inventory Mapping
 
-- signed-out local chat remains functional
-- protected pages stay gated while signed out
-- signed-in users hit `/threads*` instead of `/v1/chat/completions`
-- logout clears auth-boundary state instead of leaking linked-thread UI
+The existing Playwright files should be reinterpreted through the new tier model.
 
-Current assessment:
+Probable mapping:
 
-- user auth coverage is already in good shape for the current milestone
-- future E2E expansion should spend more time on thread/product edge cases than on basic auth repetition
+- `Core`
+  - selected coverage from [`auth-flow.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/auth-flow.spec.ts)
+  - selected coverage from [`thread-edge.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/thread-edge.spec.ts)
+  - a trimmed streaming assertion from [`streaming-cancel.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/streaming-cancel.spec.ts) or a dedicated simpler streaming spec
 
-### Thread Hydration
+- `Features`
+  - selected coverage from [`thread-hydration.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/thread-hydration.spec.ts)
+  - selected coverage from [`thread-sync-failure.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/thread-sync-failure.spec.ts)
+  - selected coverage from [`auth-mid-session.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/auth-mid-session.spec.ts)
+  - selected coverage from [`multi-tab.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/multi-tab.spec.ts)
 
-[`thread-hydration.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/thread-hydration.spec.ts)
+- `Add-ons`
+  - [`thread-bulk.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/thread-bulk.spec.ts)
+  - long-title / endurance style cases from [`thread-edge.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/thread-edge.spec.ts)
+  - richer cancellation behavior from [`streaming-cancel.spec.ts`](/home/chiweic/repository/backend/frontend-v1/tests/e2e/streaming-cancel.spec.ts)
 
-Covered scenarios:
+This mapping is directional, not final. The important decision is the tiering,
+not the exact current filenames.
 
-1. Backend-linked thread metadata rehydrates after reload
-2. Linked and local-only threads coexist across reload without duplication
-3. Reopened linked thread loads history after logout and login without sending a new message
-4. Deleted linked thread stays deleted after reload and re-login
+## Authoring Rules
 
-What this protects:
+When writing or rewriting E2E tests, prefer:
 
-- backend metadata hydration does not duplicate rows
-- local-only thread behavior is preserved
-- linked-thread history lazy-loading works after auth-boundary resets
-- delete persistence works across reload and auth transitions
+- stable `data-testid` contracts that represent domain intent
+- assertions on durable user outcomes
+- assertions on meaningful request classes when needed
+- explicit auth setup through helpers
+- fewer, simpler helpers
 
-## Known Lessons Captured In Tests
+Good examples of durable test intent:
 
-The suite was expanded after a real regression where:
-
-- a linked thread existed before logout
-- user logged out and logged back in
-- clicking the previous thread showed `Loading history`
-- history did not appear until a new message was sent
-
-That regression is now covered directly.
-
-This is important because simpler reload-only tests did not catch it.
-
-## Known Accepted Behavior
-
-Current backend-linked thread rows may briefly show:
-
-- `0 messages Linked`
-
-after login or reload until the user opens the thread.
-
-Why:
-
-- `GET /threads` hydrates metadata only
-- full history is loaded lazily from `GET /threads/{id}/state`
-- sidebar message count is derived from locally cached messages
-
-This is currently accepted because the production UI is expected to hide that status line.
-
-## Stability Rules For New E2E Tests
-
-When adding tests, prefer:
-
-- waiting for concrete backend responses rather than generic UI timing
-- stable `data-testid` selectors where interactions are repeated
-- explicit auth setup through the shared helpers
-- assertions on user-visible outcome first, request shape second
+- `thread-create-button`
+- `thread-rename-action`
+- `thread-delete-action`
+- `auth-logout-action`
+- `thread-sync-status`
 
 Avoid:
 
-- relying on optimistic UI timing alone
-- broad text selectors when rows contain repeated labels like `Linked`
-- real Google or Clerk automation in Playwright
-- helper functions that hide the real event a test should wait for
+- helpers that assume exact visual placement
+- global waits based on incidental UI state
+- exact layout assertions unless layout itself is the feature under test
+- turning every sidebar interaction into a high-value E2E concern
 
-## Current Gaps
+## Stability Guidance
 
-Not yet covered in Playwright:
+The suite should be biased toward:
 
-- assisted-learning error states
-- Clerk production-path UI itself
-- any future sidebar search/filter/query constraints
+- product contracts
+- data invariants
+- auth boundaries
+- request-path verification where meaningful
 
-Recently closed:
+The suite should be biased away from:
 
-- rename/delete failure handling and rollback visuals → `thread-sync-failure.spec.ts`
-- backend `401` handling mid-session (next action, mid run/stream) → `auth-mid-session.spec.ts`
-- cancellation behavior during linked-thread streaming → `streaming-cancel.spec.ts`
-- multi-tab auth/thread behavior → `multi-tab.spec.ts`
-- high-count thread list behavior → `thread-bulk.spec.ts`
-- extreme thread title/query length behavior → `thread-edge.spec.ts`
+- pixel-level behavior
+- exact component choreography
+- implementation-detail selectors
+- timing assumptions based on current UI composition
 
-## Next Expansion Priorities
+If a test is repeatedly expensive because the UI is evolving, ask:
 
-Based on current coverage, the next best E2E additions are:
+- is this still a `Core` contract?
+- is it really a `Features` contract?
+- should it become an `Add-on` or be removed?
 
-1. Assisted Learning fetch failure states (500, network error) — gate-verification UX on failure
-2. Backend behavior follow-ups surfaced by new tests:
-   - LangGraph `astream_events` client-disconnect handling (server-side cancellation wiring)
-   - `reconcileBackendThreads` pruning semantics (local-only state that no longer exists server-side)
-3. Search/filter behavior once sidebar search is added
-4. Clerk production-path smoke (low priority — vendor UI territory)
+## CI Implication
 
-These are reasonable next candidates if we want to expand coverage further.
+The tier model should eventually map into CI execution policy:
 
-## Maintenance Notes
+- `Core`: always run, must pass
+- `Features`: run regularly, but may be a separate required job
+- `Add-ons`: optional, scheduled, or explicitly non-blocking
 
-If a thread/auth bug is found manually, prefer:
+This is important because maintenance cost is now part of the design.
+The suite should not be allowed to grow as one flat required block.
 
-1. reduce it to a reproducible user sequence
-2. add or update a focused Playwright regression
-3. fix the product logic
-4. keep the new regression permanently
+## Immediate Direction
 
-That is the standard we want going forward, because several earlier issues were only discoverable once the exact auth-boundary sequence was exercised.
+The next maintenance step for web E2E should be:
+
+1. classify current Playwright tests into `Core`, `Features`, and `Add-ons`
+2. reduce `Core` to a small contract suite
+3. rewrite brittle tests around durable selectors and product outcomes
+4. demote or quarantine long and layout-sensitive cases when they are not
+   release-critical
+
+That is the agreed direction for the next E2E cleanup cycle.

@@ -5,3 +5,11 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+  - repo: local
+    hooks:
+      - id: biome-check
+        name: biome check (frontend-v1)
+        entry: npx biome check --fix
+        language: system
+        files: ^frontend-v1/.*\.(ts|tsx|js|json)$
+        pass_filenames: false
