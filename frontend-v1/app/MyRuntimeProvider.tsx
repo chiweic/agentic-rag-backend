@@ -82,7 +82,10 @@ const DebugRunPanel: FC<{ debugRun: RunDebugState | null }> = ({
   if (!SHOW_RUN_DEBUG_PANEL || !debugRun) return null;
 
   return (
-    <div className="pointer-events-none fixed right-4 bottom-4 z-50 max-w-sm rounded-lg border bg-background/95 p-3 text-xs shadow-lg">
+    <div
+      className="pointer-events-none fixed right-4 bottom-4 z-50 max-w-sm rounded-lg border bg-background/95 p-3 text-xs shadow-lg"
+      data-testid="run-debug-panel"
+    >
       <div className="font-semibold">Run Debug</div>
       <div className="mt-1 text-muted-foreground">
         thread: {debugRun.threadId}

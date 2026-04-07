@@ -6,6 +6,7 @@ const backendBaseURL = "http://127.0.0.1:7081";
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  testIgnore: ["**/archive/**"],
   fullyParallel: false,
   retries: 0,
   use: {

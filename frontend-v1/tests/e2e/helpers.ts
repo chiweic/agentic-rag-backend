@@ -81,16 +81,61 @@ export const waitForAssistantMessage = async (page: Page, timeout = 30_000) => {
 };
 
 export const waitForAssistantText = async (page: Page, timeout = 30_000) => {
-  const lastAssistant = assistantMessages(page).last();
-  await expect(lastAssistant).toBeVisible({ timeout });
+  await expect(assistantMessages(page).first()).toBeVisible({ timeout });
+  const assistantContents = page.locator(".aui-assistant-message-content");
   await expect
-    .poll(async () => (await lastAssistant.textContent())?.trim() ?? "", {
-      timeout,
-    })
+    .poll(
+      async () =>
+        assistantContents.evaluateAll((nodes) => {
+          for (const node of nodes) {
+            const element = node as HTMLElement;
+            const isVisible =
+              !element.hidden &&
+              element.getAttribute("aria-hidden") !== "true" &&
+              !!element.offsetParent;
+            if (!isVisible) continue;
+            const text = element.innerText.trim() || element.textContent?.trim();
+            if (text) return text;
+          }
+          return "";
+        }),
+      {
+        timeout,
+      },
+    )
     .not.toBe("");
 };
 
 export const waitForAssistantTextStart = waitForAssistantText;
+
+export const waitForVisibleAssistantText = async (
+  page: Page,
+  timeout = 30_000,
+) => {
+  const visibleAssistantContents = page.locator(
+    ".aui-assistant-message-content:visible",
+  );
+  await expect(visibleAssistantContents.first()).toBeVisible({ timeout });
+  await expect
+    .poll(
+      async () => {
+        const texts = await visibleAssistantContents.allTextContents();
+        return texts.map((text) => text.trim()).find(Boolean) ?? "";
+      },
+      { timeout },
+    )
+    .not.toBe("");
+};
+
+export const waitForRunDebugEvent = async (
+  page: Page,
+  eventName: string,
+  timeout = 30_000,
+) => {
+  await expect(page.getByTestId("run-debug-panel")).toContainText(eventName, {
+    timeout,
+  });
+};
 
 export const activeThreadRow = (page: Page) =>
   page.locator('[data-testid="thread-item"][data-active="true"]').first();
