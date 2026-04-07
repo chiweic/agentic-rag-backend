@@ -6,7 +6,7 @@ import {
   type ThreadMessageLike,
   useExternalStoreRuntime,
 } from "@assistant-ui/react";
-import { type FC, useEffect, useRef, useState } from "react";
+import { type FC, useCallback, useEffect, useRef, useState } from "react";
 import { useAuthStore } from "@/lib/auth-store";
 import {
   BackendAuthError,
@@ -152,9 +152,17 @@ export function MyRuntimeProvider({
     !!activeBackendThreadId &&
     (!activeHistoryLoaded || activeMessageCount === 0);
 
-  const recordRunEvent = (name: string, detail?: string) => {
+  const recordRunEvent = useCallback((name: string, detail?: string) => {
     const current = runDebugRef.current;
     if (!current) return;
+    const lastEvent = current.events[current.events.length - 1];
+    if (
+      lastEvent?.name === name &&
+      lastEvent.detail === detail &&
+      name === "idle_restored"
+    ) {
+      return;
+    }
     const next = {
       ...current,
       events: [
@@ -187,7 +195,7 @@ export function MyRuntimeProvider({
     }).catch(() => {
       // Best-effort local debugging only.
     });
-  };
+  }, []);
 
   useEffect(() => {
     if (!hasHydrated || !authHasHydrated || !authToken) {
