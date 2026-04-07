@@ -16,7 +16,7 @@ source venv/bin/activate
 pip install -e ".[dev]"
 
 # Run server (0.0.0.0 required for Docker clients like Open WebUI)
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8005
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8081
 
 # Lint
 ruff check app/ tests/
@@ -60,7 +60,9 @@ LangGraph's `MemorySaver` checkpointer persists conversation state per `thread_i
 - `POST /threads` creates a new thread (returns `thread_id`)
 - `POST /threads/{id}/runs/stream` sends a message and streams the response (SSE)
 - `GET /threads/{id}/state` returns full message history
-- The assistant-ui frontend uses `@assistant-ui/react-langgraph` runtime to connect
+- The assistant-ui frontend uses `ExternalStoreRuntime` with an app-owned Zustand store (see `docs/planning.md`)
+- Thread metadata (title, archive, created_at) is stored in Postgres via `app/core/thread_store.py`, separately from checkpointer state
+- Thread endpoints return normalized messages: `{id, role, content: [{type:"text", text}]}` (see `app/api/normalize.py` and `docs/api_reference.md`)
 
 ## Langfuse Integration
 
@@ -83,4 +85,4 @@ LangGraph's `MemorySaver` checkpointer persists conversation state per `thread_i
 | POST   | `/api/chat/stream`             | custom frontend | SSE streaming chat             |
 | GET    | `/health`                      | any             | Health check                   |
 
-Open WebUI connection URL: `http://<host-ip>:8005/v1`
+Open WebUI connection URL: `http://<host-ip>:8081/v1`

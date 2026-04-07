@@ -1,6 +1,82 @@
 # Backend API Reference
 
-Base URL: `http://localhost:8005`
+Base URL: `http://localhost:8081`
+
+---
+
+## Authentication
+
+Thread endpoints and `/assisted-learning/*` require a verified bearer token sent
+as `Authorization: Bearer <token>`.
+
+`/v1/*`, `/api/chat*`, and `/health` are bearer-less.
+
+Current supported bearer issuers:
+
+- Google OIDC ID tokens for the M4 flow
+- Clerk-issued bearer tokens for the Phase 5 flow when Clerk is configured
+- dev-only test tokens when `AUTH_DEV_MODE=True`
+
+For Clerk integrations, the recommended frontend pattern is:
+
+- use Clerk in the Next.js app for register / sign-in / sign-out UX
+- obtain a backend-facing bearer via Clerk's token API
+- optionally use a Clerk JWT template dedicated to the FastAPI backend
+- send that bearer to `/threads*` and `/assisted-learning/*`
+
+Backend Clerk verification requires:
+
+- `CLERK_OIDC_ISSUER`
+- `CLERK_OIDC_JWKS_URL`
+- optional `CLERK_AUTHORIZED_PARTIES` if `azp` should be constrained
+
+### User identity
+
+Backend derives a stable `user_id` from the verified token as `"{provider}:{sub}"`.
+
+Examples:
+
+- Google token → `google:<google_sub>`
+- Clerk token → `clerk:<clerk_sub>`
+- dev token → `dev:<sub>`
+
+Frontend does not need to call `/me` in the current design. For Google and Clerk,
+the frontend can populate display-only account UI from the token/session payload.
+Backend remains the authority for ownership semantics.
+
+### Error response shapes
+
+| Status | Body | When |
+|---|---|---|
+| `401` | `{"detail": "<reason>"}` | Missing / malformed / expired / wrong-aud / wrong-iss / bad-signature bearer |
+| `403` | `{"detail": "Forbidden"}` | Valid bearer, but the thread belongs to another user |
+| `404` | `{"detail": "Thread not found"}` | Thread does not exist for any user |
+
+`401` detail strings currently expose which verification step failed
+(`"Token is expired"`, `"Invalid token issuer"`, etc.) to aid debugging in M4.
+Pre-production these will collapse to a generic `"Unauthorized"`.
+
+### Dev-only auth (AUTH_DEV_MODE)
+
+When the backend is started with `AUTH_DEV_MODE=True`, a fresh RSA keypair is
+generated in-process and a `POST /auth/dev-token` endpoint becomes available.
+This exists solely for Playwright / integration testing — **never enable in
+production**. When `AUTH_DEV_MODE=False` (default) the endpoint returns `404`.
+
+```
+POST /auth/dev-token
+Content-Type: application/json
+
+Body:
+{ "sub": "alice", "email": "alice@test", "name": "Alice", "ttl_seconds": 3600 }
+
+Response:
+{ "access_token": "<jwt>", "token_type": "Bearer", "expires_in": 3600 }
+```
+
+Dev-issued tokens are signed under `iss: "https://dev.local"` and flow through
+the same verifier as Google tokens. User IDs for dev tokens are namespaced as
+`"dev:<sub>"`, kept separate from production `"google:<sub>"` identities.
 
 ---
 
@@ -30,14 +106,15 @@ Response:
 [
   {
     "thread_id": "uuid",
-    "title": "First user message (up to 80 chars)...",
+    "title": "Setting Up RAG Pipeline",
     "created_at": 1712345678.9,
+    "is_archived": false,
     "metadata": {}
   }
 ]
 ```
 
-Sorted newest first. `title` is the first user message in the thread (null if empty).
+Sorted newest first. `title` is the LLM-generated title (via `/generate-title`), or falls back to first user message (up to 80 chars), or null if empty.
 
 ### Get Thread State (load conversation)
 
@@ -46,15 +123,29 @@ GET /threads/{thread_id}/state
 
 Response:
 {
-  "values": {
-    "messages": [
-      { "type": "human", "data": { "content": "Hello", ... } },
-      { "type": "ai", "data": { "content": "Hi there!", ... } }
-    ]
-  },
-  "tasks": []
+  "thread_id": "uuid",
+  "messages": [
+    {
+      "id": "msg-...",
+      "role": "user",
+      "content": [{"type": "text", "text": "Hello"}]
+    },
+    {
+      "id": "msg-...",
+      "role": "assistant",
+      "content": [{"type": "text", "text": "Hi there!"}]
+    }
+  ]
 }
 ```
+
+Returns 404 if the thread does not exist.
+
+**Normalized message shape** (Milestone 3): every message has `id`, `role`
+(`"user" | "assistant" | "system" | "tool"`), and `content` as an array of
+parts. Milestone 3 emits **text parts only** (`{"type": "text", "text": "..."}`).
+Additional part types (tool calls, images, attachments) will be added to the
+same array without a breaking migration.
 
 ### Run Agent & Stream Response
 
@@ -66,23 +157,117 @@ Body:
 {
   "input": {
     "messages": [{ "role": "user", "content": "Hello" }]
-  },
-  "stream_mode": ["messages", "updates"]
+  }
+}
+```
+
+**Critical contract: `input.messages` is APPENDED to checkpointer state**, not
+replaced. The frontend must send **only the new user message**, not the full
+conversation history. Sending the full history will duplicate messages in the
+thread.
+
+Correct second-turn example:
+
+```json
+// After a "Hello" / "Hi there!" exchange, to send "How are you?":
+{ "input": { "messages": [{ "role": "user", "content": "How are you?" }] } }
+```
+
+Incorrect (will duplicate):
+
+```json
+// DO NOT send full history:
+{ "input": { "messages": [
+  { "role": "user",      "content": "Hello" },
+  { "role": "assistant", "content": "Hi there!" },
+  { "role": "user",      "content": "How are you?" }
+] } }
+```
+
+Returns 404 if the thread does not exist.
+
+**Response: SSE stream**
+
+Event sequence (happy path): `messages/partial` (one or more) →
+`messages/complete` → `values` → `end`.
+
+On failure: an `error` event is emitted, followed by `end`.
+
+```
+event: messages/partial
+data: {"id":"uuid","role":"assistant","content":[{"type":"text","text":"Hello so"}]}
+
+event: messages/complete
+data: {"id":"uuid","role":"assistant","content":[{"type":"text","text":"Hello so far!"}]}
+
+event: values
+data: {"thread_id":"uuid","messages":[...normalized messages...]}
+
+event: end
+data: null
+```
+
+Event semantics:
+
+- `messages/partial` — **running accumulation** of assistant content. The
+  frontend replaces the in-progress message on each tick; it is not a delta to
+  append. Same `id` across all partials for a single turn.
+- `messages/complete` — final assistant message after the LLM finishes. Same
+  normalized shape as the partials.
+- `values` — full normalized thread state after the run settles. Same shape
+  as `GET /threads/{id}/state`.
+- `end` — final sentinel with `data: null`.
+
+On error:
+
+```
+event: error
+data: {"message": "simulated LLM failure"}
+
+event: end
+data: null
+```
+
+The `error` event is emitted once, before `end`, and the stream closes
+cleanly. There is no in-stream recovery protocol — the frontend should
+surface the error and let the user retry. Retrying hits
+`POST /threads/{id}/runs/stream` again with **only the new user message**
+(append semantics still apply). If the frontend needs to reconcile with
+actual backend state after an error, call `GET /threads/{id}/state`.
+
+### Update Thread (rename, archive)
+
+```
+PATCH /threads/{thread_id}
+Content-Type: application/json
+
+Body (all fields optional):
+{
+  "title": "My conversation about RAG",
+  "is_archived": false,
+  "metadata": { "pinned": true }
 }
 
-Response: SSE stream
-  event: messages/partial    — accumulated content as tokens arrive
-  data: [{"type":"ai","id":"uuid","content":"Hello so"}]
-
-  event: messages/complete   — final complete message
-  data: [{"type":"ai","id":"uuid","content":"Hello so far!"}]
-
-  event: values              — full thread state after completion
-  data: {"messages": [...]}
-
-  event: end                 — stream finished
-  data: null
+Response:
+{
+  "thread_id": "uuid",
+  "title": "My conversation about RAG",
+  "created_at": 1712345678.9,
+  "is_archived": false,
+  "metadata": { "pinned": true }
+}
 ```
+
+### Generate Title (LLM-generated)
+
+```
+POST /threads/{thread_id}/generate-title
+
+Response:
+{ "thread_id": "uuid", "title": "Setting Up RAG Pipeline" }
+```
+
+Uses the LLM to generate a short title (max 6 words) from the first user message. Also stores it so `GET /threads` returns it.
 
 ### Delete Thread
 
@@ -97,7 +282,7 @@ Response:
 
 ## OpenAI-Compatible Endpoints (for Open WebUI)
 
-Connection URL for Open WebUI: `http://<host-ip>:8005/v1`
+Connection URL for Open WebUI: `http://<host-ip>:8081/v1`
 
 ### Chat Completions
 
@@ -206,46 +391,52 @@ Response:
 
 ## assistant-ui Frontend Integration
 
-Install:
-```bash
-npm install @assistant-ui/react @assistant-ui/react-langgraph @langchain/langgraph-sdk
+The frontend uses `ExternalStoreRuntime` with an app-owned Zustand store (see
+`docs/planning.md`). All thread endpoints return normalized shapes suitable
+for direct use in `ThreadMessageLike[]`.
+
+### Endpoint usage by frontend operation
+
+| Frontend operation | Backend endpoint |
+|---|---|
+| Create a backend-linked thread (on first send) | `POST /threads` |
+| List threads for sidebar hydration | `GET /threads` |
+| Load message history for a linked thread | `GET /threads/{id}/state` |
+| Stream a run on a linked thread | `POST /threads/{id}/runs/stream` |
+| Rename a linked thread | `PATCH /threads/{id}` with `{ "title": "..." }` |
+| Archive / unarchive | `PATCH /threads/{id}` with `{ "is_archived": bool }` |
+| Delete a linked thread | `DELETE /threads/{id}` |
+| LLM-generated title | `POST /threads/{id}/generate-title` |
+
+### Converting `/state` messages to `ThreadMessageLike[]`
+
+The normalized message shape is a near-drop-in for `ThreadMessageLike`:
+
+```typescript
+type NormalizedMessage = {
+  id: string;
+  role: "user" | "assistant" | "system" | "tool";
+  content: Array<{ type: "text"; text: string }>;
+};
+
+// GET /threads/{id}/state → { thread_id, messages: NormalizedMessage[] }
+const { messages } = await fetch(`${API}/threads/${id}/state`).then(r => r.json());
+// messages is already ThreadMessageLike-compatible for text-only content
 ```
 
-Connect:
-```typescript
-// lib/chatApi.ts
-import { Client } from "@langchain/langgraph-sdk";
+### Sending a run
 
-const client = new Client({ apiUrl: "http://localhost:8005" });
-
-export const createThread = () => client.threads.create();
-export const getThreadState = (threadId: string) => client.threads.getState(threadId);
-export const sendMessage = (params: { threadId: string; messages: any[] }) =>
-  client.runs.stream(params.threadId, "agent", {
-    input: { messages: params.messages },
-    streamMode: ["messages", "updates"],
-  });
-```
+Remember: `input.messages` is **append-only**. Send only the new user message.
 
 ```typescript
-// components/MyAssistant.tsx
-import { useLangGraphRuntime } from "@assistant-ui/react-langgraph";
-import { createThread, getThreadState, sendMessage } from "@/lib/chatApi";
-
-const runtime = useLangGraphRuntime({
-  stream: async function* (messages, { initialize }) {
-    const { externalId } = await initialize();
-    yield* await sendMessage({ threadId: externalId!, messages });
-  },
-  create: async () => {
-    const { thread_id } = await createThread();
-    return { externalId: thread_id };
-  },
-  load: async (externalId) => {
-    const state = await getThreadState(externalId);
-    return { messages: state.values.messages };
-  },
+const response = await fetch(`${API}/threads/${id}/runs/stream`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    input: { messages: [{ role: "user", content: "Hello" }] },
+  }),
 });
+// Parse SSE — see "Run Agent & Stream Response" above for event shapes
 ```
 
 ---
