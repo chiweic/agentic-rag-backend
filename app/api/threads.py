@@ -35,6 +35,7 @@ router = APIRouter(tags=["threads"])
 
 # ---------------------------------------------------------------------------
 # Schemas
+# add comment as example on cicd verification
 # ---------------------------------------------------------------------------
 class ThreadCreateRequest(BaseModel):
     metadata: dict = Field(default_factory=dict)
