@@ -40,11 +40,11 @@ class TestAssistantUIConversation:
         )
         assert resp.status_code == 200
 
-        # Verify full conversation is stored (4 messages: user, ai, user, ai)
+        # Verify full conversation is stored (4 messages: user, assistant, user, assistant)
         resp = await client.get(f"/threads/{thread_id}/state")
-        messages = resp.json()["values"]["messages"]
+        messages = resp.json()["messages"]
         assert len(messages) == 4
-        assert [m["type"] for m in messages] == ["human", "ai", "human", "ai"]
+        assert [m["role"] for m in messages] == ["user", "assistant", "user", "assistant"]
 
     @pytest.mark.asyncio
     async def test_resume_conversation(self, client):
@@ -55,7 +55,11 @@ class TestAssistantUIConversation:
 
         await client.post(
             f"/threads/{thread_id}/runs/stream",
-            json={"input": {"messages": [{"role": "user", "content": "Remember: the secret word is banana"}]}},
+            json={
+                "input": {
+                    "messages": [{"role": "user", "content": "Remember: the secret word is banana"}]
+                }
+            },
         )
 
         # --- User closes browser, time passes ---
@@ -63,9 +67,9 @@ class TestAssistantUIConversation:
         # Frontend loads thread state to restore UI
         resp = await client.get(f"/threads/{thread_id}/state")
         assert resp.status_code == 200
-        messages = resp.json()["values"]["messages"]
+        messages = resp.json()["messages"]
         assert len(messages) == 2
-        assert messages[0]["data"]["content"] == "Remember: the secret word is banana"
+        assert messages[0]["content"][0]["text"] == "Remember: the secret word is banana"
 
         # User continues the conversation
         resp = await client.post(
@@ -76,7 +80,7 @@ class TestAssistantUIConversation:
 
         # Verify agent remembers context
         resp = await client.get(f"/threads/{thread_id}/state")
-        messages = resp.json()["values"]["messages"]
+        messages = resp.json()["messages"]
         assert len(messages) == 4
 
 
@@ -92,7 +96,9 @@ class TestMultipleThreads:
         thread_a = resp.json()["thread_id"]
         await client.post(
             f"/threads/{thread_a}/runs/stream",
-            json={"input": {"messages": [{"role": "user", "content": "My favorite color is blue"}]}},
+            json={
+                "input": {"messages": [{"role": "user", "content": "My favorite color is blue"}]}
+            },
         )
 
         # Thread B — topic: animals
@@ -100,17 +106,19 @@ class TestMultipleThreads:
         thread_b = resp.json()["thread_id"]
         await client.post(
             f"/threads/{thread_b}/runs/stream",
-            json={"input": {"messages": [{"role": "user", "content": "My favorite animal is a cat"}]}},
+            json={
+                "input": {"messages": [{"role": "user", "content": "My favorite animal is a cat"}]}
+            },
         )
 
         # Verify threads are isolated
         state_a = (await client.get(f"/threads/{thread_a}/state")).json()
         state_b = (await client.get(f"/threads/{thread_b}/state")).json()
 
-        assert len(state_a["values"]["messages"]) == 2
-        assert len(state_b["values"]["messages"]) == 2
-        assert "blue" in state_a["values"]["messages"][0]["data"]["content"]
-        assert "cat" in state_b["values"]["messages"][0]["data"]["content"]
+        assert len(state_a["messages"]) == 2
+        assert len(state_b["messages"]) == 2
+        assert "blue" in state_a["messages"][0]["content"][0]["text"]
+        assert "cat" in state_b["messages"][0]["content"][0]["text"]
 
 
 # ---------------------------------------------------------------------------

@@ -2,9 +2,9 @@
 
 from typing import Annotated
 
+from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
-from langchain_core.messages import BaseMessage
 
 
 class AgentState(BaseModel):
