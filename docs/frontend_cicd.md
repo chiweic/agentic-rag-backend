@@ -122,6 +122,10 @@ Current position:
 - the suite is being reduced toward a smaller contract-focused `Core`
 - the previous E2E set was too coupled to current UI structure
 - E2E should not currently be treated as the only frontend commit gate
+- Playwright has a known limitation evaluating the signed-in long-query visible
+  rendering case in Chromium-class automation
+- Selenium on real Chrome shows the same limitation for that specific case, so
+  it is not currently treated as a Playwright-only failure
 
 ### Current Practical Rule
 
@@ -129,6 +133,8 @@ For now:
 
 - local gates for commit = typecheck + lint + unit tests
 - E2E is important, but still being stabilized and reorganized
+- the signed-in long-query scenario is a manual browser
+  validation item, not a required automated CI gate today
 
 That means E2E failures should be triaged seriously, but they should not prevent every frontend maintenance commit while the suite itself is still being redesigned.
 
@@ -193,6 +199,10 @@ The first version should only enforce the current passing baseline:
 
 Do not make browser E2E a required CI gate until the `Core` web E2E suite is intentionally stabilized.
 
+When browser E2E is promoted into CI, only the stable automated subset should
+be required first. The signed-in long-query visible-render case should remain
+manual until Chromium-class automation can evaluate it reliably.
+
 ## Known Maintenance Debt
 
 The following items are known but not currently required to block commits:
@@ -201,6 +211,8 @@ The following items are known but not currently required to block commits:
 - Biome warnings in React hook dependencies and accessibility/performance issues
 - web E2E scope is still being redesigned around realistic user contracts
 - browser-engine differences still exist in Playwright behavior for some streaming scenarios
+- signed-in long-query visible rendering is not yet a trustworthy automated
+  Chromium/Chrome gate and currently requires manual validation
 
 These are real issues, but they belong to the next cleanup passes, not to the minimum commit-ready baseline.
 
