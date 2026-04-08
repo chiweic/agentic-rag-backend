@@ -38,10 +38,6 @@ class Settings(BaseSettings):
     google_oidc_jwks_url: str = "https://www.googleapis.com/oauth2/v3/certs"
     auth_jwks_cache_ttl_seconds: int = 3600
     auth_allowed_clock_skew_seconds: int = 30
-    clerk_oidc_issuer: str = ""
-    clerk_oidc_jwks_url: str = ""
-    clerk_authorized_parties: str = ""
-
     # Logto OSS (self-hosted OIDC)
     logto_oidc_issuer: str = ""
     logto_oidc_jwks_url: str = ""

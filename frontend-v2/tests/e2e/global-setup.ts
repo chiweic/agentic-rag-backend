@@ -1,7 +1,7 @@
 /**
  * E2E global setup — verify the backend is running with AUTH_DEV_MODE=true.
  *
- * Since we no longer use @clerk/testing, auth in E2E tests works by:
+ * Auth in E2E tests works by:
  * 1. Minting a dev JWT via POST /auth/dev-token (backend dev signer)
  * 2. Intercepting the frontend's /api/auth/token call via page.route()
  * 3. Setting a fake session cookie so middleware doesn't redirect

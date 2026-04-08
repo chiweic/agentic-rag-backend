@@ -1,4 +1,4 @@
-"""Tests for Google OIDC authentication module."""
+"""Tests for OIDC authentication module (Google, Logto)."""
 
 import time
 from typing import Any
@@ -56,9 +56,9 @@ def setup_mock_jwks(monkeypatch: pytest.MonkeyPatch):
     """Set up fake config and mock JWKS fetch before each test."""
     settings.google_oidc_client_id = "test-client-id"
     settings.google_oidc_issuer = "https://accounts.google.com"
-    settings.clerk_oidc_issuer = ""
-    settings.clerk_oidc_jwks_url = ""
-    settings.clerk_authorized_parties = ""
+    settings.logto_oidc_issuer = ""
+    settings.logto_oidc_jwks_url = ""
+    settings.logto_oidc_audience = ""
 
     import json
 
@@ -107,18 +107,18 @@ async def test_wrong_audience_returns_401():
 
 
 @pytest.mark.asyncio
-async def test_valid_clerk_token_returns_claims(monkeypatch: pytest.MonkeyPatch):
-    settings.clerk_oidc_issuer = "https://clerk.test"
-    settings.clerk_oidc_jwks_url = "https://clerk.test/.well-known/jwks.json"
-    settings.clerk_authorized_parties = "http://localhost:3001"
+async def test_valid_logto_token_returns_claims(monkeypatch: pytest.MonkeyPatch):
+    settings.logto_oidc_issuer = "https://logto.test/oidc"
+    settings.logto_oidc_jwks_url = "https://logto.test/oidc/jwks"
+    settings.logto_oidc_audience = "https://api.myapp.local"
 
     import json
 
     jwk_dict = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(public_key))
-    jwk_dict["kid"] = "clerk-kid"
+    jwk_dict["kid"] = "logto-kid"
 
     async def mock_fetch_jwks(url: str) -> dict[str, Any]:
-        if url == settings.clerk_oidc_jwks_url:
+        if url == settings.logto_oidc_jwks_url:
             return {"keys": [jwk_dict]}
         return {"keys": []}
 
@@ -128,21 +128,21 @@ async def test_valid_clerk_token_returns_claims(monkeypatch: pytest.MonkeyPatch)
 
     token = jwt.encode(
         {
-            "sub": "clerk-user",
-            "iss": settings.clerk_oidc_issuer,
+            "sub": "logto-user",
+            "iss": settings.logto_oidc_issuer,
+            "aud": "https://api.myapp.local",
             "exp": int(time.time()) + 3600,
-            "email": "clerk@example.com",
-            "azp": "http://localhost:3001",
+            "email": "logto@example.com",
         },
         private_pem,
         algorithm="RS256",
-        headers={"kid": "clerk-kid"},
+        headers={"kid": "logto-kid"},
     )
 
     claims = await auth.verify_bearer_token(token)
-    assert claims.sub == "clerk-user"
-    assert claims.provider == "clerk"
-    assert claims.user_id == "clerk:clerk-user"
+    assert claims.sub == "logto-user"
+    assert claims.provider == "logto"
+    assert claims.user_id == "logto:logto-user"
 
 
 @pytest.mark.asyncio

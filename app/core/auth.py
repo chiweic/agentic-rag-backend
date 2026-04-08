@@ -1,4 +1,4 @@
-"""Authentication module — Google OIDC, Clerk, and optional dev signer."""
+"""Authentication module — Google OIDC, Logto, and optional dev signer."""
 
 import time
 from dataclasses import dataclass, field
@@ -100,24 +100,6 @@ def _google_provider() -> Provider:
     )
 
 
-def _clerk_provider() -> Provider | None:
-    if not settings.clerk_oidc_issuer or not settings.clerk_oidc_jwks_url:
-        return None
-
-    authorized_parties = [
-        item.strip() for item in settings.clerk_authorized_parties.split(",") if item.strip()
-    ]
-
-    return Provider(
-        name="clerk",
-        issuer=settings.clerk_oidc_issuer,
-        audience="",
-        verify_audience=False,
-        authorized_parties=authorized_parties,
-        jwks_url=settings.clerk_oidc_jwks_url,
-    )
-
-
 def _logto_provider() -> Provider | None:
     if not settings.logto_oidc_issuer or not settings.logto_oidc_jwks_url:
         return None
@@ -141,9 +123,6 @@ def init_providers() -> None:
         }
     )
     register_provider(_google_provider())
-    clerk = _clerk_provider()
-    if clerk is not None:
-        register_provider(clerk)
     logto = _logto_provider()
     if logto is not None:
         register_provider(logto)
