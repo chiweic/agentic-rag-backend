@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Multi-Agent Coordination
+
+Read and follow `AGENTS.md` for rules on working alongside other AI agents (e.g. Codex). Use branch prefix `claude/` for feature branches.
+
 ## What This Is
 
 Agentic RAG backend — FastAPI + LangGraph + Langfuse observability. See `docs/agent_context.md` for full design principles.
