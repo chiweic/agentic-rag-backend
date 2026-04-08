@@ -11,5 +11,41 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  logto-db:
+    image: postgres:17
+    container_name: logto-postgres
+    environment:
+      POSTGRES_USER: logto
+      POSTGRES_PASSWORD: logto
+      POSTGRES_DB: logto
+    ports:
+      - "5435:5432"
+    volumes:
+      - logto-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logto"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  logto:
+    image: svhd/logto:latest
+    container_name: logto
+    depends_on:
+      logto-db:
+        condition: service_healthy
+    entrypoint: ["sh", "-c", "npm run cli db seed -- --swe && npm start"]
+    environment:
+      TRUST_PROXY_HEADER: "1"
+      DB_URL: postgres://logto:logto@logto-db:5432/logto
+      PORT: "3302"
+      ADMIN_PORT: "3301"
+      ENDPOINT: http://localhost:3302
+      ADMIN_ENDPOINT: http://localhost:3301
+    ports:
+      - "3301:3301"
+      - "3302:3302"
+
 volumes:
   pgdata:
+  logto-pgdata:

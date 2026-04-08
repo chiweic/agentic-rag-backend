@@ -4,8 +4,12 @@ import {
   ThreadListItemPrimitive,
   ThreadListPrimitive,
 } from "@assistant-ui/react";
-import { UserButton } from "@clerk/nextjs";
-import { ArchiveIcon, MessageSquarePlusIcon, Trash2Icon } from "lucide-react";
+import {
+  ArchiveIcon,
+  LogOutIcon,
+  MessageSquarePlusIcon,
+  Trash2Icon,
+} from "lucide-react";
 import type { FC } from "react";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
@@ -35,7 +39,18 @@ export const ThreadListSidebar: FC = () => {
       </ThreadListPrimitive.Root>
 
       <div className="flex items-center gap-2 border-t px-4 py-3">
-        <UserButton />
+        {/* eslint-disable-next-line react/jsx-no-target-blank */}
+        <a
+          href="/api/auth/sign-out"
+          onClick={(e) => {
+            e.stopPropagation();
+            window.location.href = "/api/auth/sign-out";
+          }}
+          className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <LogOutIcon className="size-4" />
+          Sign out
+        </a>
       </div>
     </aside>
   );

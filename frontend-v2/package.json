@@ -20,7 +20,7 @@
     "@assistant-ui/react": "latest",
     "@assistant-ui/react-langgraph": "latest",
     "@assistant-ui/react-markdown": "latest",
-    "@clerk/nextjs": "^7.0.8",
+    "@logto/next": "^4.2.10",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-dialog": "^1.1.15",

@@ -7,15 +7,9 @@ repos:
       - id: ruff-format
   - repo: local
     hooks:
-      - id: biome-check
-        name: biome check (frontend-v1)
-        entry: npx biome check --fix
-        language: system
-        files: ^frontend-v1/.*\.(ts|tsx|js|json)$
-        pass_filenames: false
       - id: biome-check-v2
         name: biome check (frontend-v2)
-        entry: npx --prefix frontend-v2 biome check --fix
+        entry: bash -c 'cd frontend-v2 && npx biome check --fix'
         language: system
         files: ^frontend-v2/.*\.(ts|tsx|js|json)$
         pass_filenames: false

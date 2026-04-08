@@ -118,6 +118,18 @@ def _clerk_provider() -> Provider | None:
     )
 
 
+def _logto_provider() -> Provider | None:
+    if not settings.logto_oidc_issuer or not settings.logto_oidc_jwks_url:
+        return None
+    return Provider(
+        name="logto",
+        issuer=settings.logto_oidc_issuer,
+        audience=settings.logto_oidc_audience,
+        verify_audience=bool(settings.logto_oidc_audience),
+        jwks_url=settings.logto_oidc_jwks_url,
+    )
+
+
 def init_providers() -> None:
     """Register configured providers. Safe to call multiple times."""
     _providers.clear()
@@ -132,6 +144,9 @@ def init_providers() -> None:
     clerk = _clerk_provider()
     if clerk is not None:
         register_provider(clerk)
+    logto = _logto_provider()
+    if logto is not None:
+        register_provider(logto)
     if settings.auth_dev_mode:
         dev = _build_dev_provider()
         register_provider(dev)
@@ -315,10 +330,16 @@ async def verify_bearer_token(token: str) -> UserClaims:
         raise AuthError("Key ID not found in JWKS")
 
     try:
-        public_key = jwt.algorithms.RSAAlgorithm.from_jwk(jwk)
+        kty = jwk.get("kty", "RSA")
+        if kty == "EC":
+            public_key = jwt.algorithms.ECAlgorithm.from_jwk(jwk)
+        else:
+            public_key = jwt.algorithms.RSAAlgorithm.from_jwk(jwk)
     except Exception as e:
         log.error("Failed to parse JWK: %s", e)
         raise AuthError("Invalid JWK format")
+
+    alg = jwk.get("alg", "RS256")
 
     try:
         decode_options = {"require": ["exp", "iss", "sub"]}
@@ -328,7 +349,7 @@ async def verify_bearer_token(token: str) -> UserClaims:
         payload = jwt.decode(
             token,
             key=public_key,
-            algorithms=["RS256"],
+            algorithms=[alg],
             issuer=provider.issuer,
             audience=provider.audience if provider.verify_audience else None,
             leeway=settings.auth_allowed_clock_skew_seconds,

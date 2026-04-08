@@ -5,7 +5,6 @@ import {
   useRemoteThreadListRuntime,
 } from "@assistant-ui/react";
 import { useLangGraphRuntime } from "@assistant-ui/react-langgraph";
-import { useAuth } from "@clerk/nextjs";
 import { useEffect } from "react";
 import { Thread } from "@/components/assistant-ui/thread";
 import { ThreadListSidebar } from "@/components/assistant-ui/thread-list-sidebar";
@@ -19,6 +18,14 @@ import {
   setTokenResolver as setAdapterToken,
   threadListAdapter,
 } from "@/lib/threadListAdapter";
+
+/** Fetch the access token from the server-side Logto session. */
+async function fetchAccessToken(): Promise<string | null> {
+  const res = await fetch("/api/auth/token");
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.accessToken ?? null;
+}
 
 function useLangGraphRuntimeHook() {
   return useLangGraphRuntime({
@@ -46,13 +53,10 @@ function useLangGraphRuntimeHook() {
 }
 
 export function Assistant() {
-  const { getToken } = useAuth();
-
   useEffect(() => {
-    const resolver = () => getToken();
-    setChatApiToken(resolver);
-    setAdapterToken(resolver);
-  }, [getToken]);
+    setChatApiToken(fetchAccessToken);
+    setAdapterToken(fetchAccessToken);
+  }, []);
 
   const runtime = useRemoteThreadListRuntime({
     runtimeHook: useLangGraphRuntimeHook,

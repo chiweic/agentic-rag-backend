@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     clerk_oidc_jwks_url: str = ""
     clerk_authorized_parties: str = ""
 
+    # Logto OSS (self-hosted OIDC)
+    logto_oidc_issuer: str = ""
+    logto_oidc_jwks_url: str = ""
+    logto_oidc_audience: str = ""
+
     # Dev-only auth bypass for Playwright / integration testing.
     # When True, a fresh RSA keypair is generated at startup and POST /auth/dev-token
     # is exposed. Must be False in production.
