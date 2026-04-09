@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   DarkTheme,
   DefaultTheme,
@@ -17,6 +17,7 @@ import {
   useAui,
   Tools,
 } from "@assistant-ui/react-native";
+import { useLogto } from "@logto/rn";
 import { useAppRuntime } from "@/hooks/use-app-runtime";
 import { ThreadListDrawer } from "@/components/thread-list/ThreadListDrawer";
 import { expoToolkit } from "@/components/assistant-ui/tools";
@@ -69,7 +70,12 @@ function DrawerLayout() {
 }
 
 function AppContent() {
-  const runtime = useAppRuntime();
+  const { getAccessToken } = useLogto();
+  const getToken = useCallback(
+    () => getAccessToken("https://api.myapp.local"),
+    [getAccessToken],
+  );
+  const runtime = useAppRuntime(getToken);
   const aui = useAui({
     tools: Tools({ toolkit: expoToolkit }),
   });

@@ -3,7 +3,7 @@ import * as Linking from "expo-linking";
 
 export const logtoConfig: LogtoNativeConfig = {
   endpoint: process.env.EXPO_PUBLIC_LOGTO_ENDPOINT ?? "http://localhost:3302",
-  appId: process.env.EXPO_PUBLIC_LOGTO_APP_ID ?? "un96c8vwvshdv84vi3qvs",
+  appId: process.env.EXPO_PUBLIC_LOGTO_APP_ID ?? "5mcfcvqvthf80j40vw0na",
   resources: [
     process.env.EXPO_PUBLIC_LOGTO_RESOURCE ?? "https://api.myapp.local",
   ],
