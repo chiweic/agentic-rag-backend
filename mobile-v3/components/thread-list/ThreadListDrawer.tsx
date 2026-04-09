@@ -30,11 +30,11 @@ export function ThreadListDrawer({ navigation }: DrawerContentComponentProps) {
       <FlatList
         data={threadIds}
         keyExtractor={(item) => item}
-        renderItem={({ item: threadId }) => {
+        renderItem={({ item: threadId, index }) => {
           const threadItem = threadItems.find((t) => t.id === threadId);
           return (
             <ThreadListItem
-              title={threadItem?.title ?? "New Chat"}
+              title={threadItem?.title ?? `Chat ${threadIds.length - index}`}
               isActive={threadId === mainThreadId}
               onPress={() => {
                 aui.threads().switchToThread(threadId);
