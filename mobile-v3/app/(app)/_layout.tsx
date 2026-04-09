@@ -1,8 +1,8 @@
-import { Redirect } from "expo-router";
+import { Redirect, Stack } from "expo-router";
 import { useLogto } from "@logto/rn";
 import { ActivityIndicator, View } from "react-native";
 
-export default function Index() {
+export default function AppLayout() {
   const { isAuthenticated, isInitialized } = useLogto();
 
   if (!isInitialized) {
@@ -13,9 +13,9 @@ export default function Index() {
     );
   }
 
-  if (isAuthenticated) {
-    return <Redirect href="/(app)" />;
+  if (!isAuthenticated) {
+    return <Redirect href="/(auth)/sign-in" />;
   }
 
-  return <Redirect href="/(auth)/sign-in" />;
+  return <Stack screenOptions={{ headerShown: false }} />;
 }

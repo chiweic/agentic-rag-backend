@@ -56,7 +56,12 @@ function DrawerLayout() {
           drawerStyle: { backgroundColor: "transparent" },
         }}
       >
-        <Drawer.Screen name="index" options={{ title: "Chat" }} />
+        <Drawer.Screen name="index" options={{ drawerItemStyle: { display: "none" } }} />
+        <Drawer.Screen name="(app)" options={{ title: "Chat" }} />
+        <Drawer.Screen
+          name="(auth)"
+          options={{ drawerItemStyle: { display: "none" } }}
+        />
       </Drawer>
       <StatusBar style="auto" />
     </ThemeProvider>
