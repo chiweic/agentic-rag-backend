@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   DarkTheme,
   DefaultTheme,
@@ -19,6 +19,7 @@ import {
 } from "@assistant-ui/react-native";
 import { useLogto } from "@logto/rn";
 import { useAppRuntime } from "@/hooks/use-app-runtime";
+import { setStorageUserId } from "@/lib/local-thread-adapter";
 import { ThreadListDrawer } from "@/components/thread-list/ThreadListDrawer";
 import { expoToolkit } from "@/components/assistant-ui/tools";
 
@@ -90,12 +91,25 @@ function AppContent() {
 }
 
 function AppContentWithAuthKey() {
-  const { isAuthenticated } = useLogto();
+  const { isAuthenticated, getIdTokenClaims } = useLogto();
   const [authKey, setAuthKey] = useState(0);
+  const [userReady, setUserReady] = useState(false);
 
   useEffect(() => {
-    setAuthKey((k) => k + 1);
-  }, [isAuthenticated]);
+    setUserReady(false);
+    (async () => {
+      try {
+        const claims = await getIdTokenClaims();
+        setStorageUserId(claims?.sub);
+      } catch {
+        setStorageUserId(undefined);
+      }
+      setUserReady(true);
+      setAuthKey((k) => k + 1);
+    })();
+  }, [isAuthenticated, getIdTokenClaims]);
+
+  if (!userReady) return null;
 
   return <AppContent key={authKey} />;
 }

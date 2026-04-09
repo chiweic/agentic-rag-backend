@@ -18,9 +18,26 @@ import type {
   RemoteThreadMetadata,
 } from "@assistant-ui/core";
 
-const PREFIX = "@assistant-ui:";
-const THREADS_KEY = `${PREFIX}threads`;
-const messagesKey = (threadId: string) => `${PREFIX}messages:${threadId}`;
+const BASE_PREFIX = "@assistant-ui:";
+
+let _userId: string | undefined;
+
+/** Set the current user ID to scope all storage keys. */
+export function setStorageUserId(userId: string | undefined) {
+  _userId = userId;
+}
+
+function prefix() {
+  return _userId ? `${BASE_PREFIX}${_userId}:` : BASE_PREFIX;
+}
+
+function threadsKey() {
+  return `${prefix()}threads`;
+}
+
+function messagesKey(threadId: string) {
+  return `${prefix()}messages:${threadId}`;
+}
 
 type StoredThreadMetadata = {
   remoteId: string;
@@ -30,14 +47,14 @@ type StoredThreadMetadata = {
 };
 
 async function loadThreadMetadata(): Promise<StoredThreadMetadata[]> {
-  const raw = await AsyncStorage.getItem(THREADS_KEY);
+  const raw = await AsyncStorage.getItem(threadsKey());
   return raw ? (JSON.parse(raw) as StoredThreadMetadata[]) : [];
 }
 
 async function saveThreadMetadata(
   threads: StoredThreadMetadata[],
 ): Promise<void> {
-  await AsyncStorage.setItem(THREADS_KEY, JSON.stringify(threads));
+  await AsyncStorage.setItem(threadsKey(), JSON.stringify(threads));
 }
 
 export const localThreadListAdapter: RemoteThreadListAdapter = {
