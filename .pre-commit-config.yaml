@@ -13,3 +13,9 @@ repos:
         language: system
         files: ^frontend-v2/.*\.(ts|tsx|js|json)$
         pass_filenames: false
+      - id: expo-lint-mobile-v3
+        name: expo lint (mobile-v3)
+        entry: bash -c 'cd mobile-v3 && npx expo lint 2>&1 | head -30; exit ${PIPESTATUS[0]}'
+        language: system
+        files: ^mobile-v3/.*\.(ts|tsx)$
+        pass_filenames: false
