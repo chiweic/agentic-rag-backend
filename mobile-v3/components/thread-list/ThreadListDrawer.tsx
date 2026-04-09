@@ -1,11 +1,14 @@
-import { FlatList, View, StyleSheet, useColorScheme } from "react-native";
+import { FlatList, View, StyleSheet, useColorScheme, Pressable, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAui, useAuiState } from "@assistant-ui/react-native";
+import { useLogto } from "@logto/rn";
 import { ThreadListItem } from "./ThreadListItem";
+import { postSignOutRedirectUri } from "@/lib/logto";
 import type { DrawerContentComponentProps } from "@react-navigation/drawer";
 
 export function ThreadListDrawer({ navigation }: DrawerContentComponentProps) {
   const aui = useAui();
+  const { signOut } = useLogto();
   const threadIds = useAuiState((s) => s.threads.threadIds);
   const mainThreadId = useAuiState((s) => s.threads.mainThreadId);
   const threadItems = useAuiState((s) => s.threads.threadItems);
@@ -43,6 +46,17 @@ export function ThreadListDrawer({ navigation }: DrawerContentComponentProps) {
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
       />
+      <Pressable
+        style={[
+          styles.signOutButton,
+          { borderTopColor: isDark ? "#38383a" : "#d1d1d6" },
+        ]}
+        onPress={() => signOut(postSignOutRedirectUri)}
+      >
+        <Text style={[styles.signOutText, { color: isDark ? "#ff453a" : "#ff3b30" }]}>
+          Sign Out
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -53,5 +67,14 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingVertical: 8,
+  },
+  signOutButton: {
+    padding: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+  },
+  signOutText: {
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

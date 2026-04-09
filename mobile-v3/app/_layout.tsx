@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   DarkTheme,
   DefaultTheme,
@@ -71,9 +71,11 @@ function DrawerLayout() {
 
 function AppContent() {
   const { getAccessToken } = useLogto();
+  const getAccessTokenRef = useRef(getAccessToken);
+  getAccessTokenRef.current = getAccessToken;
   const getToken = useCallback(
-    () => getAccessToken("https://api.myapp.local"),
-    [getAccessToken],
+    () => getAccessTokenRef.current("https://api.myapp.local"),
+    [],
   );
   const runtime = useAppRuntime(getToken);
   const aui = useAui({
@@ -85,6 +87,17 @@ function AppContent() {
       <DrawerLayout />
     </AssistantRuntimeProvider>
   );
+}
+
+function AppContentWithAuthKey() {
+  const { isAuthenticated } = useLogto();
+  const [authKey, setAuthKey] = useState(0);
+
+  useEffect(() => {
+    setAuthKey((k) => k + 1);
+  }, [isAuthenticated]);
+
+  return <AppContent key={authKey} />;
 }
 
 export default function RootLayout() {
@@ -109,7 +122,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <LogtoProvider config={logtoConfig}>
-        <AppContent />
+        <AppContentWithAuthKey />
       </LogtoProvider>
     </GestureHandlerRootView>
   );
