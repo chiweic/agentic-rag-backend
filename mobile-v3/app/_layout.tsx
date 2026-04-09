@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import {
   DarkTheme,
   DefaultTheme,
@@ -62,20 +63,43 @@ function DrawerLayout() {
   );
 }
 
-export default function RootLayout() {
-  const [fontsLoaded] = useFonts(Ionicons.font);
+function AppContent() {
   const runtime = useAppRuntime();
   const aui = useAui({
     tools: Tools({ toolkit: expoToolkit }),
   });
 
-  if (!fontsLoaded) return null;
+  return (
+    <AssistantRuntimeProvider runtime={runtime} aui={aui}>
+      <DrawerLayout />
+    </AssistantRuntimeProvider>
+  );
+}
+
+export default function RootLayout() {
+  const [fontsLoaded] = useFonts(Ionicons.font);
+
+  // Dynamically import @logto/rn to avoid SSR crash (localStorage)
+  const [LogtoProvider, setLogtoProvider] =
+    useState<React.ComponentType<any> | null>(null);
+  const [logtoConfig, setLogtoConfig] = useState<any>(null);
+
+  useEffect(() => {
+    (async () => {
+      const logtoMod = await import("@logto/rn");
+      const configMod = await import("@/lib/logto");
+      setLogtoProvider(() => logtoMod.LogtoProvider);
+      setLogtoConfig(configMod.logtoConfig);
+    })();
+  }, []);
+
+  if (!fontsLoaded || !LogtoProvider || !logtoConfig) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AssistantRuntimeProvider runtime={runtime} aui={aui}>
-        <DrawerLayout />
-      </AssistantRuntimeProvider>
+      <LogtoProvider config={logtoConfig}>
+        <AppContent />
+      </LogtoProvider>
     </GestureHandlerRootView>
   );
 }
