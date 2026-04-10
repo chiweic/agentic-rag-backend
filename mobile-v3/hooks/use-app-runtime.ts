@@ -1,51 +1,49 @@
 import { useMemo } from "react";
-import {
-  useChatRuntime,
-  AssistantChatTransport,
-} from "@assistant-ui/react-ai-sdk";
+import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
 import { useRemoteThreadListRuntime } from "@assistant-ui/core/react";
 import { useAui } from "@assistant-ui/store";
-import { lastAssistantMessageIsCompleteWithToolCalls } from "ai";
-import {
-  localThreadListAdapter,
-  createLocalHistoryAdapter,
-} from "@/lib/local-thread-adapter";
+import { createBackendThreadListAdapter } from "@/lib/backend-thread-adapter";
+import { BackendChatTransport } from "@/lib/backend-chat-transport";
+import { createBackendHistoryAdapter } from "@/lib/backend-history-adapter";
 
-const CHAT_API = process.env.EXPO_PUBLIC_CHAT_ENDPOINT_URL ?? "/api/chat";
-
-export function useAppRuntime(getAccessToken?: () => Promise<string | null>) {
-  const transport = useMemo(
-    () =>
-      new AssistantChatTransport({
-        api: CHAT_API,
-        headers: async () => {
-          const token = await getAccessToken?.();
-          if (token) {
-            return { Authorization: `Bearer ${token}` };
-          }
-          return {};
-        },
-      }),
+export function useAppRuntime(getAccessToken: () => Promise<string | null>) {
+  const adapter = useMemo(
+    () => createBackendThreadListAdapter(getAccessToken),
     [getAccessToken],
   );
 
   return useRemoteThreadListRuntime({
     runtimeHook: function RuntimeHook() {
       const aui = useAui();
-      const history = useMemo(
-        () =>
-          createLocalHistoryAdapter(
-            () => aui.threadListItem()?.getState()?.remoteId,
-          ),
+      const remoteId = aui.threadListItem()?.getState()?.remoteId;
+
+      const getRemoteId = useMemo(
+        () => () => aui.threadListItem()?.getState()?.remoteId,
         [aui],
+      );
+
+      const transport = useMemo(
+        () =>
+          new BackendChatTransport({
+            getRemoteId,
+            getAccessToken,
+          }),
+        [getRemoteId],
+      );
+
+      // Re-create history adapter when remoteId changes so useChatRuntime
+      // sees a new adapter reference and calls load() for the new thread.
+      const history = useMemo(
+        () => createBackendHistoryAdapter(getRemoteId, getAccessToken),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [remoteId],
       );
 
       return useChatRuntime({
         transport,
         adapters: { history },
-        sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
       });
     },
-    adapter: localThreadListAdapter,
+    adapter,
   });
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   DarkTheme,
   DefaultTheme,
@@ -19,7 +19,6 @@ import {
 } from "@assistant-ui/react-native";
 import { useLogto } from "@logto/rn";
 import { useAppRuntime } from "@/hooks/use-app-runtime";
-import { setStorageUserId } from "@/lib/local-thread-adapter";
 import { ThreadListDrawer } from "@/components/thread-list/ThreadListDrawer";
 import { expoToolkit } from "@/components/assistant-ui/tools";
 
@@ -34,6 +33,7 @@ function NewChatButton() {
         aui.threads().switchToNewThread();
       }}
       style={{ marginRight: 16 }}
+      accessibilityLabel="New chat"
     >
       <Ionicons
         name="create-outline"
@@ -91,23 +91,17 @@ function AppContent() {
 }
 
 function AppContentWithAuthKey() {
-  const { isAuthenticated, getIdTokenClaims } = useLogto();
+  const { isAuthenticated } = useLogto();
   const [authKey, setAuthKey] = useState(0);
   const [userReady, setUserReady] = useState(false);
 
   useEffect(() => {
+    // Remount the runtime when auth state changes so the backend adapter
+    // picks up the new access token.
     setUserReady(false);
-    (async () => {
-      try {
-        const claims = await getIdTokenClaims();
-        setStorageUserId(claims?.sub);
-      } catch {
-        setStorageUserId(undefined);
-      }
-      setUserReady(true);
-      setAuthKey((k) => k + 1);
-    })();
-  }, [isAuthenticated, getIdTokenClaims]);
+    setUserReady(true);
+    setAuthKey((k) => k + 1);
+  }, [isAuthenticated]);
 
   if (!userReady) return null;
 
