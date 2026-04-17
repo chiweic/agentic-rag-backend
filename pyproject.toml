@@ -35,6 +35,17 @@ dev = [
 # outside of pyproject so the backend stays decoupled from rag_bot versions.
 rag_bot = []
 
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# Repo root holds sibling dirs (exp/, data/, frontend-v2/, mobile-v3/, etc.).
+# Scope the package to `app` so setuptools' flat-layout autodiscovery
+# doesn't choke on the siblings.
+[tool.setuptools.packages.find]
+include = ["app*"]
+exclude = ["tests*", "exp*", "data*", "docs*", "scripts*", "venv*"]
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100
