@@ -65,11 +65,41 @@ async def test_mint_dev_token_raises_when_dev_mode_off(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_dev_router_is_not_mounted_when_dev_mode_off(client):
-    """The main app is built with AUTH_DEV_MODE=False by default, so
-    /auth/dev-token must return 404 there (endpoint-existence probe)."""
-    resp = await client.post("/auth/dev-token", json={"sub": "anyone"})
-    assert resp.status_code == 404
+async def test_dev_router_is_not_mounted_when_dev_mode_off():
+    """`_include_routers` must skip the auth-dev router when `AUTH_DEV_MODE=False`.
+
+    Dev mode is the local-dev default (`.env` flips it on), so asserting
+    against the shared test app would test the env, not the gate. We
+    exercise the gating function directly against a fresh app so the
+    assertion is independent of whatever `.env` the developer has.
+    """
+    from fastapi import FastAPI
+
+    from app.core.config import Settings
+    from app.main import _include_routers
+
+    fresh_app = FastAPI()
+    settings_off = Settings(auth_dev_mode=False)
+    _include_routers(fresh_app, settings_off)
+
+    paths = {route.path for route in fresh_app.routes}
+    assert "/auth/dev-token" not in paths
+
+
+@pytest.mark.asyncio
+async def test_dev_router_is_mounted_when_dev_mode_on():
+    """Symmetric positive case: dev router mounts when the flag is on."""
+    from fastapi import FastAPI
+
+    from app.core.config import Settings
+    from app.main import _include_routers
+
+    fresh_app = FastAPI()
+    settings_on = Settings(auth_dev_mode=True)
+    _include_routers(fresh_app, settings_on)
+
+    paths = {route.path for route in fresh_app.routes}
+    assert "/auth/dev-token" in paths
 
 
 @pytest.mark.asyncio

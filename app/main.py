@@ -88,6 +88,23 @@ async def lifespan(app: FastAPI):
     shutdown_langfuse()
 
 
+def _include_routers(app: FastAPI, settings) -> None:
+    """Mount all routers. Dev-only routers are gated on `settings.auth_dev_mode`.
+
+    Extracted so tests can verify gating against a fresh app + overridden
+    Settings, instead of relying on process-wide env mutation.
+    """
+    app.include_router(chat_router)
+    app.include_router(openai_router)
+    app.include_router(threads_router)
+    app.include_router(assisted_learning_router)
+
+    if settings.auth_dev_mode:
+        from app.api.auth_dev import router as auth_dev_router
+
+        app.include_router(auth_dev_router)
+
+
 app = FastAPI(
     title="Agentic RAG Backend",
     version="0.1.0",
@@ -102,15 +119,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(chat_router)
-app.include_router(openai_router)
-app.include_router(threads_router)
-app.include_router(assisted_learning_router)
-
-if settings.auth_dev_mode:
-    from app.api.auth_dev import router as auth_dev_router
-
-    app.include_router(auth_dev_router)
+_include_routers(app, settings)
 
 
 @app.get("/health")
