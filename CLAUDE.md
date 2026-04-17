@@ -35,18 +35,22 @@ pytest tests/test_foo.py::test_bar  # single test
 
 ```
 app/
-├── main.py              # FastAPI app, CORS, lifespan (Langfuse shutdown)
+├── main.py              # FastAPI app, CORS, lifespan (installs RagService, Langfuse shutdown)
 ├── core/
 │   ├── config.py        # pydantic-settings + load_dotenv (must load before SDK imports)
 │   └── tracing.py       # Langfuse config builder (callback + metadata per request)
+├── rag/                 # RAG integration layer — see "RAG Service" section below
+│   ├── protocol.py      # RagService Protocol + RetrievalHit, RagAnswer DTOs
+│   ├── __init__.py      # build_rag_service() factory + set/current service getters
+│   └── providers/       # _null.py + rag_bot.py (the ONLY file that imports rag_bot)
 ├── agent/
 │   ├── state.py         # AgentState (Pydantic model for LangGraph)
-│   ├── nodes.py         # Graph nodes — each step is a standalone function
-│   └── graph.py         # LangGraph StateGraph + MemorySaver checkpointer
+│   ├── nodes.py         # retrieve + generate nodes — pull RagService from config["configurable"]
+│   └── graph.py         # StateGraph: START → retrieve → generate → END
 └── api/
     ├── schemas.py       # Request/response Pydantic models (custom + OpenAI-compat)
     ├── chat.py          # POST /api/chat, POST /api/chat/stream (SSE)
-    ├── openai_compat.py # POST /v1/chat/completions, GET /v1/models (Open WebUI)
+    ├── openai_compat.py # POST /v1/chat/completions (Sources: footer) + /v1/models
     └── threads.py       # LangGraph Cloud-compatible thread/run endpoints (assistant-ui)
 ```
 
@@ -57,6 +61,19 @@ app/
 - **All steps must be observable** — every node traced via Langfuse callback handler
 - **LLM uses structured output** — no hidden logic inside LLM
 - **Retrieval is separated** — dense / sparse / merge / rerank as distinct nodes (not yet wired)
+
+## RAG Service
+
+Retrieval + grounded generation are decoupled from rag_bot via a Protocol. See [docs/rag_integration.md](docs/rag_integration.md) for the full provider-add guide.
+
+- [app/rag/protocol.py](app/rag/protocol.py) — `RagService` Protocol + `RetrievalHit` / `RagAnswer` DTOs. Backend code outside the adapter sees **only** these types.
+- [app/rag/providers/rag_bot.py](app/rag/providers/rag_bot.py) — single integration seam. Only file allowed to `import rag_bot`. Uses `rag_bot.llm_config.resolve("GEN_LLM")` so both repos share one env-var schema.
+- [app/rag/__init__.py](app/rag/__init__.py) — `build_rag_service(settings)` picks a provider from `RAG_PROVIDER` (`rag_bot` default, `null` fallback). Lifespan calls `set_rag_service(...)`; request handlers pull via `current_rag_service()`.
+- Nodes read the service from `config["configurable"]["rag_service"]` — no imports of providers or rag_bot from [app/agent/](app/agent/).
+- Assistant messages carry two content blocks: `{type:"text",...}` + `{type:"citations", citations:[...]}`. OpenAI-compat flattens the citations block into a `Sources:` footer.
+- Per-request source override: pass `metadata.source_type` on `/threads/*/runs/stream` or `/v1/chat/completions`.
+
+To add a new provider (e.g. `rag_bot_v2`): copy [app/rag/providers/rag_bot.py](app/rag/providers/rag_bot.py), implement `RagService`, register it in [app/rag/__init__.py](app/rag/__init__.py).
 
 ## Thread / Conversation Model
 

@@ -13,8 +13,10 @@ class Settings(BaseSettings):
 
     # ---- RAG service -----------------------------------------------------
     # Selects the concrete RagService implementation (see app.rag).
-    # "null" = no-op (default during Phases A1-A3); "rag_bot" = use rag_bot.
-    rag_provider: Literal["null", "rag_bot"] = "null"
+    # "rag_bot" (default) wires retrieval + generation via the rag_bot
+    # adapter. "null" falls back to a no-op service for boot without
+    # retrieval.
+    rag_provider: Literal["null", "rag_bot"] = "rag_bot"
 
     # Passed through to the selected provider. The provider decides how to
     # interpret them (e.g. rag_bot's DataSourceManager reads data_root as

@@ -43,7 +43,8 @@ def current_rag_service() -> RagService | None:
     return _SERVICE
 
 
-def get_rag_service(settings: "Settings") -> RagService:
+def build_rag_service(settings: "Settings") -> RagService:
+    """Construct a `RagService` according to `settings.rag_provider`."""
     provider = (settings.rag_provider or "null").lower()
 
     if provider == "null":
@@ -57,6 +58,8 @@ def get_rag_service(settings: "Settings") -> RagService:
 
         return RagBotService(settings)
 
-    raise RuntimeError(
-        f"Unknown RAG_PROVIDER={provider!r}. " f"Supported providers: null, rag_bot."
-    )
+    raise RuntimeError(f"Unknown RAG_PROVIDER={provider!r}. Supported providers: null, rag_bot.")
+
+
+# Back-compat alias — pre-Phase-A3 callers used get_rag_service(settings).
+get_rag_service = build_rag_service

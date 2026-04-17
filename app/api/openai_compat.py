@@ -169,20 +169,38 @@ async def _stream_response(state: AgentState, config: dict, model: str):
                         final_ai_message = msg
                         break
 
-    # Non-streaming RAG providers: synthesize a content chunk from the
-    # final assistant message so OpenAI-compat clients see the full text.
-    if not emitted_content and final_ai_message is not None:
+    # Emit citations. When tokens streamed (emitted_content=True) we only
+    # need the footer; when no streaming fired (RAG provider used .invoke),
+    # synthesize the full body plus footer from the final AIMessage.
+    if final_ai_message is not None:
         text, citations = _flatten_ai_message(final_ai_message)
-        if citations:
-            text = _append_sources_footer(text, citations)
-        if text:
+        if not emitted_content and text:
             synth_chunk = OpenAIChatStreamChunk(
                 id=completion_id,
                 created=created,
                 model=model,
-                choices=[OpenAIStreamChoice(delta=OpenAIDelta(content=text))],
+                choices=[
+                    OpenAIStreamChoice(
+                        delta=OpenAIDelta(
+                            content=_append_sources_footer(text, citations) if citations else text
+                        )
+                    )
+                ],
             )
             yield f"data: {synth_chunk.model_dump_json()}\n\n"
+        elif emitted_content and citations:
+            footer_lines = ["", "", "Sources:"]
+            for c in citations:
+                title = c.get("title") or c.get("chunk_id") or ""
+                url = c.get("source_url") or ""
+                footer_lines.append(f"- {title} ({url})" if url else f"- {title}")
+            footer_chunk = OpenAIChatStreamChunk(
+                id=completion_id,
+                created=created,
+                model=model,
+                choices=[OpenAIStreamChoice(delta=OpenAIDelta(content="\n".join(footer_lines)))],
+            )
+            yield f"data: {footer_chunk.model_dump_json()}\n\n"
 
     final_chunk = OpenAIChatStreamChunk(
         id=completion_id,
