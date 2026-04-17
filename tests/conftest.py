@@ -1,7 +1,11 @@
 """Shared test fixtures.
 
 Uses MemorySaver and in-memory thread store so tests run without external services.
+A fake `RagService` is injected on `app.state` so graph nodes can run without
+hitting real retrieval or an LLM endpoint.
 """
+
+from __future__ import annotations
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -11,6 +15,71 @@ from app.agent.graph import set_checkpointer
 from app.core import thread_store
 from app.core.auth import UserClaims, get_current_user
 from app.main import app
+from app.rag import set_rag_service
+from app.rag.protocol import RagAnswer, RagService, RetrievalHit
+
+
+class FakeRagService:
+    """Deterministic `RagService` for tests — no LLM, no network.
+
+    `search` returns a fixed pair of hits with marker text so assertions
+    can verify the retrieve node populated state correctly.
+    `generate` returns the last user message prefixed with a marker so
+    assertions can verify the generate node was reached.
+
+    Captures calls on `.search_calls` / `.generate_calls` so tests can
+    assert how many times each node ran.
+    """
+
+    MARKER = "FIXTURE_RAG_ANSWER"
+
+    def __init__(self) -> None:
+        self.search_calls: list[dict] = []
+        self.generate_calls: list[dict] = []
+
+    def search(
+        self,
+        query: str,
+        *,
+        source_type: str | None = None,
+        limit: int = 5,
+    ) -> list[RetrievalHit]:
+        self.search_calls.append({"query": query, "source_type": source_type, "limit": limit})
+        return [
+            RetrievalHit(
+                chunk_id="FIXTURE_CHUNK_0",
+                text="fixture chunk text 0",
+                title="FIXTURE_DOC_A",
+                source_url="https://example.test/a",
+                score=0.9,
+                metadata={"source_type": source_type or "faguquanji"},
+            ),
+            RetrievalHit(
+                chunk_id="FIXTURE_CHUNK_1",
+                text="fixture chunk text 1",
+                title="FIXTURE_DOC_B",
+                source_url="https://example.test/b",
+                score=0.8,
+                metadata={"source_type": source_type or "faguquanji"},
+            ),
+        ]
+
+    def generate(
+        self,
+        query: str,
+        hits: list[RetrievalHit],
+        *,
+        history: list[dict[str, str]] | None = None,
+    ) -> RagAnswer:
+        self.generate_calls.append({"query": query, "hit_count": len(hits), "history": history})
+        return RagAnswer(
+            text=f"{self.MARKER} for query: {query}",
+            citations=hits,
+        )
+
+
+# Runtime-protocol check.
+_: RagService = FakeRagService()
 
 
 @pytest.fixture(autouse=True)
@@ -30,12 +99,33 @@ def mock_auth():
     app.dependency_overrides.clear()
 
 
+_FAKE: FakeRagService | None = None
+
+
 @pytest.fixture(autouse=True)
 async def _setup_backends():
-    """Inject in-memory checkpointer and thread store for all tests."""
+    """Inject in-memory checkpointer, thread store, and fake RAG service."""
+    global _FAKE
     set_checkpointer(MemorySaver())
     await thread_store.init_store()  # no conn → in-memory
+    _FAKE = FakeRagService()
+    set_rag_service(_FAKE)
     yield
+    set_rag_service(None)
+    _FAKE = None
+
+
+@pytest.fixture
+def fake_rag_service() -> FakeRagService:
+    """Direct handle to the fake service installed for the current test.
+
+    Usage in tests:
+        async def test_something(fake_rag_service, client):
+            ...
+            assert len(fake_rag_service.search_calls) == 1
+    """
+    assert _FAKE is not None, "fake_rag_service not installed; check conftest fixture order"
+    return _FAKE
 
 
 @pytest.fixture

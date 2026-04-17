@@ -27,10 +27,15 @@ def _to_langchain_messages(messages: list[ChatMessage]):
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
+    from app.rag import current_rag_service
+
     """Non-streaming chat endpoint."""
     thread_id = str(uuid.uuid4())
     config = {
-        "configurable": {"thread_id": thread_id},
+        "configurable": {
+            "thread_id": thread_id,
+            "rag_service": current_rag_service(),
+        },
         **get_langfuse_config(
             user_id=request.user_id,
             session_id=request.session_id,
@@ -55,10 +60,15 @@ async def chat(request: ChatRequest):
 
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
+    from app.rag import current_rag_service
+
     """Streaming chat endpoint via SSE."""
     thread_id = str(uuid.uuid4())
     config = {
-        "configurable": {"thread_id": thread_id},
+        "configurable": {
+            "thread_id": thread_id,
+            "rag_service": current_rag_service(),
+        },
         **get_langfuse_config(
             user_id=request.user_id,
             session_id=request.session_id,

@@ -22,8 +22,15 @@ from app.core.tracing import shutdown_langfuse  # noqa: E402
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.core.thread_store import init_store
+    from app.rag import build_rag_service, set_rag_service
 
     init_providers()
+
+    # Build the RAG service once per process. Installed on a module-level
+    # slot so request handlers can read it without FastAPI `Request`
+    # dependency injection (keeps the route signatures clean).
+    set_rag_service(build_rag_service(settings))
+    log.info("RAG provider: %s", settings.rag_provider)
 
     if settings.postgres_uri:
         # Production: Postgres-backed checkpointer + thread store

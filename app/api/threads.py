@@ -176,9 +176,9 @@ async def generate_title(thread_id: str, user: UserClaims = Depends(get_current_
     from langchain_core.messages import HumanMessage as HM
     from langchain_core.messages import SystemMessage as SM
 
-    from app.agent.nodes import get_llm
+    from app.agent.nodes import generate_title_llm
 
-    llm = get_llm()
+    llm = generate_title_llm()
     response = llm.invoke(
         [
             SM(
@@ -264,13 +264,23 @@ async def run_stream(
         tags=["thread"],
     )
 
+    source_type = None
+    if request.metadata and isinstance(request.metadata, dict):
+        source_type = request.metadata.get("source_type")
+
+    from app.rag import current_rag_service
+
     config = {
-        "configurable": {"thread_id": thread_id},
+        "configurable": {
+            "thread_id": thread_id,
+            "rag_service": current_rag_service(),
+            "source_type": source_type,
+        },
         **langfuse_config,
     }
 
     return StreamingResponse(
-        _stream_events(input_messages, config, request.command),
+        _stream_events(input_messages, config, request.command, source_type=source_type),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -298,7 +308,13 @@ def _parse_input_messages(raw_messages: list) -> list:
     return lc_messages
 
 
-async def _stream_events(input_messages: list | None, config: dict, command: dict | None):
+async def _stream_events(
+    input_messages: list | None,
+    config: dict,
+    command: dict | None,
+    *,
+    source_type: str | None = None,
+):
     """Stream in normalized SSE format.
 
     Event sequence:
@@ -312,7 +328,12 @@ async def _stream_events(input_messages: list | None, config: dict, command: dic
         {"id": "...", "role": "assistant", "content": [{"type":"text","text":"..."}]}
     """
 
-    invoke_input = {"messages": input_messages} if input_messages else None
+    if input_messages:
+        invoke_input: dict | None = {"messages": input_messages}
+        if source_type:
+            invoke_input["source_type"] = source_type
+    else:
+        invoke_input = None
 
     accumulated_content = ""
     ai_message_id = str(uuid.uuid4())
@@ -350,6 +371,25 @@ async def _stream_events(input_messages: list | None, config: dict, command: dic
         state = await agent_module.agent_graph.aget_state(config)
         raw_messages = state.values.get("messages", []) if state.values else []
         values_messages = normalize_messages(raw_messages)
+
+        # SSE contract guarantees at least one `messages/partial` and one
+        # `messages/complete` for the final assistant reply. When the
+        # underlying chat model is non-streaming (RAG provider wraps a
+        # single `.invoke` call), `on_chat_model_stream` may not have
+        # fired. Synthesize the pair from the final normalized assistant
+        # message so consumers see a consistent event sequence.
+        if values_messages:
+            last = values_messages[-1]
+            if last.get("role") == "assistant":
+                final_msg = {
+                    "id": last.get("id") or ai_message_id,
+                    "role": "assistant",
+                    "content": last.get("content", []),
+                }
+                if accumulated_content == "":
+                    yield f"event: messages/partial\ndata: {json.dumps(final_msg)}\n\n"
+                    yield f"event: messages/complete\ndata: {json.dumps(final_msg)}\n\n"
+
         payload = {"thread_id": thread_id, "messages": values_messages}
         yield f"event: values\ndata: {json.dumps(payload)}\n\n"
 

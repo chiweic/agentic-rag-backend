@@ -270,8 +270,12 @@ async def test_state_response_shape(client):
         assert msg["role"] in {"user", "assistant", "system", "tool"}
         assert isinstance(msg["content"], list)
         for part in msg["content"]:
-            assert part["type"] == "text"
-            assert isinstance(part["text"], str)
+            # Assistant messages now carry both text and citations blocks.
+            assert part["type"] in {"text", "citations"}
+            if part["type"] == "text":
+                assert isinstance(part["text"], str)
+            elif part["type"] == "citations":
+                assert isinstance(part["citations"], list)
 
 
 @pytest.mark.asyncio

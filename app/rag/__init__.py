@@ -1,9 +1,13 @@
-"""Factory for the backend's RAG service.
+"""Factory + module-level access for the backend's RAG service.
 
-`get_rag_service(settings)` returns a concrete `RagService` based on
-`settings.rag_provider`. Provider modules are lazily imported so a
-missing provider dependency (e.g. rag_bot not installed) only errors if
-you actually select that provider.
+`build_rag_service(settings)` constructs a concrete `RagService` based
+on `settings.rag_provider`. Called once from the FastAPI lifespan, it
+also caches the result on a module-global so `current_rag_service()`
+works from inside request handlers without threading the FastAPI
+`Request` through every signature.
+
+Provider modules are lazily imported so a missing provider dependency
+(e.g. rag_bot not installed) only errors if you actually select it.
 """
 
 from __future__ import annotations
@@ -15,7 +19,28 @@ from app.rag.protocol import RagAnswer, RagService, RetrievalHit
 if TYPE_CHECKING:
     from app.core.config import Settings
 
-__all__ = ["RagService", "RetrievalHit", "RagAnswer", "get_rag_service"]
+__all__ = [
+    "RagService",
+    "RetrievalHit",
+    "RagAnswer",
+    "build_rag_service",
+    "get_rag_service",
+    "current_rag_service",
+    "set_rag_service",
+]
+
+_SERVICE: RagService | None = None
+
+
+def set_rag_service(service: RagService | None) -> None:
+    """Install (or clear) the process-wide RagService. Called by lifespan."""
+    global _SERVICE
+    _SERVICE = service
+
+
+def current_rag_service() -> RagService | None:
+    """Return the process-wide RagService, or None if not yet built."""
+    return _SERVICE
 
 
 def get_rag_service(settings: "Settings") -> RagService:

@@ -32,10 +32,13 @@ _ROLE_MAP = {
 
 
 def _content_to_text_parts(content) -> list[dict]:
-    """Convert LangChain message content to a list of text parts.
+    """Convert LangChain message content to a list of content parts.
 
     LangChain content can be either a string or a list of content blocks.
-    For Milestone 3 we emit text parts only; non-text blocks are stringified.
+    Text blocks pass through as `{type: "text", text: ...}`. Citations
+    blocks (attached by the RAG generate node) pass through unchanged so
+    block-aware consumers (assistant-ui) can render sources inline.
+    Unknown dict blocks are stringified.
     """
     if isinstance(content, str):
         return [{"type": "text", "text": content}]
@@ -46,11 +49,18 @@ def _content_to_text_parts(content) -> list[dict]:
             if isinstance(block, str):
                 parts.append({"type": "text", "text": block})
             elif isinstance(block, dict):
-                # LangChain text block: {"type": "text", "text": "..."}
-                if block.get("type") == "text" and isinstance(block.get("text"), str):
+                btype = block.get("type")
+                if btype == "text" and isinstance(block.get("text"), str):
                     parts.append({"type": "text", "text": block["text"]})
+                elif btype == "citations":
+                    parts.append(
+                        {
+                            "type": "citations",
+                            "citations": list(block.get("citations", [])),
+                        }
+                    )
                 else:
-                    # Non-text block — stringify for now
+                    # Unknown block shape — stringify so the frontend still renders
                     parts.append({"type": "text", "text": str(block)})
         return parts
 

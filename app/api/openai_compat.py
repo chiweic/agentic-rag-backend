@@ -44,10 +44,19 @@ def _to_langchain_messages(messages: list[OpenAIMessage]):
 
 @router.post("/chat/completions")
 async def chat_completions(request: OpenAIChatRequest):
+    from app.rag import current_rag_service
+
     # Ephemeral thread_id — OpenAI-compat is stateless per request
     thread_id = str(uuid.uuid4())
+    source_type = None
+    if request.metadata and isinstance(request.metadata, dict):
+        source_type = request.metadata.get("source_type")
     config = {
-        "configurable": {"thread_id": thread_id},
+        "configurable": {
+            "thread_id": thread_id,
+            "rag_service": current_rag_service(),
+            "source_type": source_type,
+        },
         **get_langfuse_config(
             user_id=request.user,
             trace_name="openai-compat-chat",
@@ -66,6 +75,7 @@ async def chat_completions(request: OpenAIChatRequest):
     state = AgentState(
         messages=_to_langchain_messages(request.messages),
         user_id=request.user,
+        source_type=source_type,
     )
 
     if request.stream:
@@ -76,7 +86,10 @@ async def chat_completions(request: OpenAIChatRequest):
 
     result = await agent_module.agent_graph.ainvoke(state, config=config)
     ai_message = result["messages"][-1]
-    log.info("OpenAI-compat | complete | %d chars", len(ai_message.content))
+    content_text, citations = _flatten_ai_message(ai_message)
+    if citations:
+        content_text = _append_sources_footer(content_text, citations)
+    log.info("OpenAI-compat | complete | %d chars", len(content_text))
 
     return OpenAIChatResponse(
         id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
@@ -84,11 +97,40 @@ async def chat_completions(request: OpenAIChatRequest):
         model=request.model,
         choices=[
             OpenAIChoice(
-                message=OpenAIMessage(role="assistant", content=ai_message.content),
+                message=OpenAIMessage(role="assistant", content=content_text),
             )
         ],
         usage=OpenAIUsage(),
     )
+
+
+def _flatten_ai_message(msg: AIMessage) -> tuple[str, list[dict]]:
+    """Extract text + citation blocks from a potentially-multi-block AIMessage."""
+    content = msg.content
+    if isinstance(content, str):
+        return content, []
+    text_parts: list[str] = []
+    citations: list[dict] = []
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict):
+                btype = block.get("type")
+                if btype == "text":
+                    text_parts.append(str(block.get("text", "")))
+                elif btype == "citations":
+                    citations = list(block.get("citations", []))
+            elif isinstance(block, str):
+                text_parts.append(block)
+    return "".join(text_parts), citations
+
+
+def _append_sources_footer(text: str, citations: list[dict]) -> str:
+    lines = [text.rstrip(), "", "Sources:"]
+    for c in citations:
+        title = c.get("title") or c.get("chunk_id") or ""
+        url = c.get("source_url") or ""
+        lines.append(f"- {title} ({url})" if url else f"- {title}")
+    return "\n".join(lines)
 
 
 async def _stream_response(state: AgentState, config: dict, model: str):
@@ -103,10 +145,14 @@ async def _stream_response(state: AgentState, config: dict, model: str):
     )
     yield f"data: {first_chunk.model_dump_json()}\n\n"
 
+    emitted_content = False
+    final_ai_message: AIMessage | None = None
     async for event in agent_module.agent_graph.astream_events(state, config=config, version="v2"):
-        if event["event"] == "on_chat_model_stream":
+        kind = event["event"]
+        if kind == "on_chat_model_stream":
             chunk: AIMessageChunk = event["data"]["chunk"]
             if chunk.content:
+                emitted_content = True
                 stream_chunk = OpenAIChatStreamChunk(
                     id=completion_id,
                     created=created,
@@ -114,6 +160,29 @@ async def _stream_response(state: AgentState, config: dict, model: str):
                     choices=[OpenAIStreamChoice(delta=OpenAIDelta(content=chunk.content))],
                 )
                 yield f"data: {stream_chunk.model_dump_json()}\n\n"
+        elif kind == "on_chain_end" and event.get("name") == "LangGraph":
+            output = event.get("data", {}).get("output")
+            if isinstance(output, dict):
+                messages = output.get("messages") or []
+                for msg in reversed(messages):
+                    if isinstance(msg, AIMessage):
+                        final_ai_message = msg
+                        break
+
+    # Non-streaming RAG providers: synthesize a content chunk from the
+    # final assistant message so OpenAI-compat clients see the full text.
+    if not emitted_content and final_ai_message is not None:
+        text, citations = _flatten_ai_message(final_ai_message)
+        if citations:
+            text = _append_sources_footer(text, citations)
+        if text:
+            synth_chunk = OpenAIChatStreamChunk(
+                id=completion_id,
+                created=created,
+                model=model,
+                choices=[OpenAIStreamChoice(delta=OpenAIDelta(content=text))],
+            )
+            yield f"data: {synth_chunk.model_dump_json()}\n\n"
 
     final_chunk = OpenAIChatStreamChunk(
         id=completion_id,

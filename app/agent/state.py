@@ -1,6 +1,6 @@
 """Agent state definition for the LangGraph pipeline."""
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
@@ -10,8 +10,8 @@ from pydantic import BaseModel, Field
 class AgentState(BaseModel):
     """State that flows through the LangGraph pipeline.
 
-    Each node reads from and writes to this state.
-    Extend with retrieval fields (documents, scores) when adding RAG steps.
+    Each node reads from and writes to this state. Retrieval fields are
+    populated by the `retrieve` node and consumed by `generate`.
     """
 
     messages: Annotated[list[BaseMessage], add_messages] = Field(default_factory=list)
@@ -20,7 +20,9 @@ class AgentState(BaseModel):
     user_id: str | None = None
     session_id: str | None = None
 
-    # Future RAG fields (uncomment when adding retrieval)
-    # query: str = ""
-    # documents: list[dict] = Field(default_factory=list)
-    # reranked_documents: list[dict] = Field(default_factory=list)
+    # RAG fields (populated by the retrieve node)
+    query: str = ""
+    source_type: str | None = None
+    retrieval_context: list[str] = Field(default_factory=list)
+    retrieved_chunk_ids: list[str] = Field(default_factory=list)
+    citations: list[dict[str, Any]] = Field(default_factory=list)

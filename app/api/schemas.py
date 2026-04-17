@@ -35,6 +35,9 @@ class OpenAIChatRequest(BaseModel):
     temperature: float | None = None
     max_tokens: int | None = None
     user: str | None = None
+    # Extension point for RAG config (e.g. {"source_type": "qa"}). Ignored
+    # by stock OpenAI but honoured by this backend.
+    metadata: dict | None = None
 
 
 class OpenAIChoice(BaseModel):
