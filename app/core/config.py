@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -10,7 +11,23 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # LLM (OpenAI-compatible endpoint)
+    # ---- RAG service -----------------------------------------------------
+    # Selects the concrete RagService implementation (see app.rag).
+    # "null" = no-op (default during Phases A1-A3); "rag_bot" = use rag_bot.
+    rag_provider: Literal["null", "rag_bot"] = "null"
+
+    # Passed through to the selected provider. The provider decides how to
+    # interpret them (e.g. rag_bot's DataSourceManager reads data_root as
+    # a managed data directory).
+    data_root: Path = Path("/mnt/data/rag_bot/data")
+    default_source_type: str = "faguquanji"
+    retrieval_backend: Literal["lexical", "milvus"] = "milvus"
+    retrieval_limit: int = 5
+    rerank_enabled: bool = False
+
+    # ---- Legacy LLM fields (deprecated, kept for one release cycle) ------
+    # New code reads GEN_LLM + {VENDOR}_BASE_URL/MODEL_NAME/API_KEY via
+    # rag_bot.llm_config.resolve(). Provider adapters own that call.
     openai_api_base: str = "http://area51r5:8003/v1"
     openai_api_key: str = "not-needed"
     openai_model: str = "gpt-4o-mini"
