@@ -50,13 +50,6 @@ class Settings(BaseSettings):
     rerank_timeout: float = 120.0
     rerank_truncate_chars: int = 0
 
-    # ---- Legacy LLM fields (deprecated, kept for one release cycle) ------
-    # New code reads GEN_LLM + {VENDOR}_BASE_URL/MODEL_NAME/API_KEY via
-    # rag_bot.llm_config.resolve(). Provider adapters own that call.
-    openai_api_base: str = "http://area51r5:8003/v1"
-    openai_api_key: str = "not-needed"
-    openai_model: str = "gpt-4o-mini"
-
     # Langfuse (SDK reads LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY,
     # LANGFUSE_BASE_URL directly from env — these are here for validation only)
     langfuse_public_key: str = ""
