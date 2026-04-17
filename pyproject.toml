@@ -26,7 +26,14 @@ dev = [
     "httpx>=0.27",
     "ruff>=0.8",
     "cryptography>=41.0",
+    "pre-commit>=3",
 ]
+# Opt-in RAG provider. Install with: pip install -e '.[rag_bot]'
+# rag_bot lives in a sibling repo; reference it there via an editable install:
+#   pip install -e /mnt/data/rag_bot[langchain]
+# It is listed here only for discoverability; the editable path is managed
+# outside of pyproject so the backend stays decoupled from rag_bot versions.
+rag_bot = []
 
 [tool.ruff]
 target-version = "py312"

@@ -1,0 +1,163 @@
+"""rag_bot provider — the only file in the backend that imports rag_bot.
+
+This adapter maps rag_bot's concrete types onto the backend's abstract
+`RagService` Protocol. All vendor config resolution is delegated to
+`rag_bot.llm_config.resolve` so there is one source of truth for the
+`GEN_LLM` + `{VENDOR}_*` env pattern across both repos.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+from app.rag.protocol import RagAnswer, RagService, RetrievalHit
+
+if TYPE_CHECKING:
+    from rag_bot.data_sources.models import RetrievalHit as RagBotRetrievalHit
+
+    from app.core.config import Settings
+
+
+class RagBotService:
+    """`RagService` backed by rag_bot's DataSourceManager + generate_answer.
+
+    Constructed once per backend process. `search` caches the native
+    rag_bot hits it returns, keyed by the protocol hits' chunk-id tuple,
+    so a subsequent `generate(query, hits)` call with those same hits can
+    avoid re-querying. The cache is bounded to the last N searches
+    (default 64) to keep memory steady under long-running services.
+    """
+
+    _CACHE_LIMIT = 64
+
+    def __init__(self, settings: "Settings") -> None:
+        from rag_bot.data_sources.manager import DataSourceManager
+        from rag_bot.llm_config import resolve
+        from rag_bot.llm_factory import create_chat_model
+
+        self._settings = settings
+        self._manager = DataSourceManager(settings.data_root)
+
+        llm_cfg = resolve("GEN_LLM")
+        self._chat_model = create_chat_model(
+            vendor=llm_cfg.vendor,
+            base_url=llm_cfg.base_url,
+            model=llm_cfg.model,
+            api_key=llm_cfg.api_key,
+            temperature=0,
+            think=False,
+        )
+
+        # (chunk_id_tuple) -> list[rag_bot RetrievalHit]
+        self._hits_cache: dict[tuple[str, ...], list[Any]] = {}
+        self._cache_order: list[tuple[str, ...]] = []
+
+    # ------------------------------------------------------------------
+    # RagService contract
+    # ------------------------------------------------------------------
+    def search(
+        self,
+        query: str,
+        *,
+        source_type: str | None = None,
+        limit: int | None = None,
+    ) -> list[RetrievalHit]:
+        from rag_bot.config import EmbeddingConfig, MilvusConfig, RerankConfig
+
+        source = source_type or self._settings.default_source_type
+        hits = self._manager.search(
+            source,
+            query,
+            limit=limit or self._settings.retrieval_limit,
+            backend=self._settings.retrieval_backend,
+            embedding_config=EmbeddingConfig(),
+            milvus_config=MilvusConfig(),
+            rerank=self._settings.rerank_enabled,
+            rerank_config=RerankConfig(),
+        )
+        protocol_hits = [self._map_hit(h) for h in hits]
+        self._cache_hits(protocol_hits, hits)
+        return protocol_hits
+
+    def generate(
+        self,
+        query: str,
+        hits: list[RetrievalHit],
+        *,
+        history: list[dict[str, str]] | None = None,
+    ) -> RagAnswer:
+        from rag_bot.rag.generator import generate_answer
+
+        if not hits:
+            return RagAnswer(
+                text=(
+                    "I could not find relevant source content for that "
+                    "question. Please try rephrasing."
+                ),
+                citations=[],
+            )
+
+        native_hits = self._lookup_cached_hits(hits) or self._requery(query, hits)
+        generated = generate_answer(
+            question=query,
+            hits=native_hits,
+            chat_model=self._chat_model,
+        )
+        return RagAnswer(text=generated.answer, citations=hits)
+
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
+    def _cache_hits(self, protocol_hits: list[RetrievalHit], native_hits: list[Any]) -> None:
+        if not protocol_hits:
+            return
+        key = tuple(h.chunk_id for h in protocol_hits)
+        self._hits_cache[key] = native_hits
+        self._cache_order.append(key)
+        while len(self._cache_order) > self._CACHE_LIMIT:
+            oldest = self._cache_order.pop(0)
+            self._hits_cache.pop(oldest, None)
+
+    def _lookup_cached_hits(self, protocol_hits: list[RetrievalHit]) -> list[Any] | None:
+        key = tuple(h.chunk_id for h in protocol_hits)
+        return self._hits_cache.get(key)
+
+    def _requery(self, query: str, protocol_hits: list[RetrievalHit]) -> list[Any]:
+        """Cache miss fallback: re-run retrieval to reconstruct native hits."""
+        from rag_bot.config import EmbeddingConfig, MilvusConfig, RerankConfig
+
+        source = (
+            protocol_hits[0].metadata.get("source_type")
+            if protocol_hits and protocol_hits[0].metadata
+            else self._settings.default_source_type
+        )
+        return self._manager.search(
+            source,
+            query,
+            limit=len(protocol_hits) or self._settings.retrieval_limit,
+            backend=self._settings.retrieval_backend,
+            embedding_config=EmbeddingConfig(),
+            milvus_config=MilvusConfig(),
+            rerank=self._settings.rerank_enabled,
+            rerank_config=RerankConfig(),
+        )
+
+    @staticmethod
+    def _map_hit(hit: "RagBotRetrievalHit") -> RetrievalHit:
+        return RetrievalHit(
+            chunk_id=hit.chunk.id,
+            text=hit.chunk.text,
+            title=hit.chunk.title,
+            source_url=hit.chunk.source_url,
+            score=hit.score,
+            metadata={
+                "source_type": hit.chunk.source_type,
+                "record_id": hit.chunk.record_id,
+                "chunk_index": hit.chunk.chunk_index,
+                "publish_date": hit.chunk.publish_date,
+            },
+        )
+
+
+# Runtime-protocol check — fails loudly if the shape drifts.
+_: RagService = RagBotService.__new__(RagBotService)
