@@ -31,12 +31,40 @@ class RagBotService:
     _CACHE_LIMIT = 64
 
     def __init__(self, settings: "Settings") -> None:
+        from rag_bot.config import EmbeddingConfig, MilvusConfig, RerankConfig
         from rag_bot.data_sources.manager import DataSourceManager
         from rag_bot.llm_config import resolve
         from rag_bot.llm_factory import create_chat_model
 
         self._settings = settings
         self._manager = DataSourceManager(settings.data_root)
+
+        # Retrieval-service configs are immutable per-process. Build them
+        # once from Settings so env overrides propagate without paying the
+        # construction cost on every search.
+        self._embedding_config = EmbeddingConfig(
+            tei_embed_base_url=settings.embedding_base_url,
+            truncate=settings.embedding_truncate,
+        )
+        self._milvus_config = MilvusConfig(
+            host=settings.milvus_host,
+            port=settings.milvus_port,
+            db_name=settings.milvus_db_name,
+            collection_prefix=settings.milvus_collection_prefix,
+            user=settings.milvus_user or None,
+            password=settings.milvus_password or None,
+            token=settings.milvus_token or None,
+            secure=settings.milvus_secure,
+            timeout=settings.milvus_timeout,
+        )
+        self._rerank_config = RerankConfig(
+            endpoint=settings.rerank_endpoint,
+            top_n=settings.rerank_top_n,
+            candidate_k=settings.rerank_candidate_k,
+            batch_size=settings.rerank_batch_size,
+            timeout=settings.rerank_timeout,
+            truncate_chars=settings.rerank_truncate_chars,
+        )
 
         llm_cfg = resolve("GEN_LLM")
         self._chat_model = create_chat_model(
@@ -62,18 +90,16 @@ class RagBotService:
         source_type: str | None = None,
         limit: int | None = None,
     ) -> list[RetrievalHit]:
-        from rag_bot.config import EmbeddingConfig, MilvusConfig, RerankConfig
-
         source = source_type or self._settings.default_source_type
         hits = self._manager.search(
             source,
             query,
             limit=limit or self._settings.retrieval_limit,
             backend=self._settings.retrieval_backend,
-            embedding_config=EmbeddingConfig(),
-            milvus_config=MilvusConfig(),
+            embedding_config=self._embedding_config,
+            milvus_config=self._milvus_config,
             rerank=self._settings.rerank_enabled,
-            rerank_config=RerankConfig(),
+            rerank_config=self._rerank_config,
         )
         protocol_hits = [self._map_hit(h) for h in hits]
         self._cache_hits(protocol_hits, hits)
@@ -124,8 +150,6 @@ class RagBotService:
 
     def _requery(self, query: str, protocol_hits: list[RetrievalHit]) -> list[Any]:
         """Cache miss fallback: re-run retrieval to reconstruct native hits."""
-        from rag_bot.config import EmbeddingConfig, MilvusConfig, RerankConfig
-
         source = (
             protocol_hits[0].metadata.get("source_type")
             if protocol_hits and protocol_hits[0].metadata
@@ -136,10 +160,10 @@ class RagBotService:
             query,
             limit=len(protocol_hits) or self._settings.retrieval_limit,
             backend=self._settings.retrieval_backend,
-            embedding_config=EmbeddingConfig(),
-            milvus_config=MilvusConfig(),
+            embedding_config=self._embedding_config,
+            milvus_config=self._milvus_config,
             rerank=self._settings.rerank_enabled,
-            rerank_config=RerankConfig(),
+            rerank_config=self._rerank_config,
         )
 
     @staticmethod

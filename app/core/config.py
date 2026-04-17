@@ -27,6 +27,29 @@ class Settings(BaseSettings):
     retrieval_limit: int = 5
     rerank_enabled: bool = False
 
+    # Embedding service (TEI). Only used when retrieval_backend=milvus.
+    embedding_base_url: str = "http://localhost:8080"
+    embedding_truncate: bool = True
+
+    # Milvus vector store. Only used when retrieval_backend=milvus.
+    milvus_host: str = "localhost"
+    milvus_port: int = 19530
+    milvus_db_name: str = "langchain_demo"
+    milvus_collection_prefix: str = "rag_bot"
+    milvus_user: str = ""
+    milvus_password: str = ""
+    milvus_token: str = ""
+    milvus_secure: bool = False
+    milvus_timeout: float = 30.0
+
+    # Rerank service. Only used when rerank_enabled=true.
+    rerank_endpoint: str = "http://localhost:8081/rerank"
+    rerank_top_n: int = 5
+    rerank_candidate_k: int = 10
+    rerank_batch_size: int = 64
+    rerank_timeout: float = 120.0
+    rerank_truncate_chars: int = 0
+
     # ---- Legacy LLM fields (deprecated, kept for one release cycle) ------
     # New code reads GEN_LLM + {VENDOR}_BASE_URL/MODEL_NAME/API_KEY via
     # rag_bot.llm_config.resolve(). Provider adapters own that call.
