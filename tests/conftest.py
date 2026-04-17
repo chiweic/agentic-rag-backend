@@ -14,9 +14,11 @@ from langgraph.checkpoint.memory import MemorySaver
 from app.agent.graph import set_checkpointer
 from app.core import thread_store
 from app.core.auth import UserClaims, get_current_user
+from app.core.config import settings
 from app.main import app
 from app.rag import set_rag_service
 from app.rag.protocol import RagAnswer, RagService, RetrievalHit
+from app.suggestions.starter import StarterSuggestionsPool
 
 
 class FakeRagService:
@@ -102,17 +104,41 @@ def mock_auth():
 _FAKE: FakeRagService | None = None
 
 
+_FIXTURE_STARTER_TITLES = [
+    "What is zen?",
+    "How to start meditating?",
+    "What is the Diamond Sutra?",
+    "Why do we chant?",
+    "What is karma?",
+]
+
+
+def _fake_rephraser(titles: list[str]) -> list[str]:
+    return [f"Tell me about {t.rstrip('?')}" for t in titles]
+
+
 @pytest.fixture(autouse=True)
 async def _setup_backends():
-    """Inject in-memory checkpointer, thread store, and fake RAG service."""
+    """Inject in-memory checkpointer, thread store, fake RAG, and fake starter pool."""
     global _FAKE
     set_checkpointer(MemorySaver())
     await thread_store.init_store()  # no conn → in-memory
     _FAKE = FakeRagService()
     set_rag_service(_FAKE)
+
+    pool = StarterSuggestionsPool(
+        settings=settings,
+        title_source=lambda: list(_FIXTURE_STARTER_TITLES),
+        rephraser=_fake_rephraser,
+    )
+    await pool.build()
+    app.state.starter_pool = pool
+
     yield
+
     set_rag_service(None)
     _FAKE = None
+    app.state.starter_pool = None
 
 
 @pytest.fixture

@@ -28,6 +28,7 @@ from app.core import thread_store
 from app.core.auth import UserClaims, get_current_user
 from app.core.logging import get_logger
 from app.core.tracing import get_langfuse_config
+from app.suggestions.followup import generate_followups
 
 log = get_logger(__name__)
 router = APIRouter(tags=["threads"])
@@ -321,13 +322,13 @@ async def _stream_events(
         messages/partial   — running accumulation (replace-on-chunk, not delta)
         messages/complete  — final assistant message after LLM finishes
         values             — full normalized thread state
+        suggestions/final  — follow-up prompts (only when the turn is grounded)
         error              — emitted on exception before the stream closes
         end                — final sentinel
 
     Payload shapes use the normalized message form:
         {"id": "...", "role": "assistant", "content": [{"type":"text","text":"..."}]}
     """
-
     if input_messages:
         invoke_input: dict | None = {"messages": input_messages}
         if source_type:
@@ -400,8 +401,29 @@ async def _stream_events(
                     yield f"event: messages/partial\ndata: {json.dumps(final_msg)}\n\n"
                     yield f"event: messages/complete\ndata: {json.dumps(final_msg)}\n\n"
 
+        # Kick off follow-up suggestions in parallel with the `values`
+        # event so we don't extend time-to-first-answer. Grounded answers
+        # only: if the last assistant message has no citations block, skip
+        # — under a no-hits fallback there's no useful follow-up direction.
+        followup_task = _maybe_start_followups(input_messages, raw_messages)
+
         payload = {"thread_id": thread_id, "messages": values_messages}
         yield f"event: values\ndata: {json.dumps(payload)}\n\n"
+
+        if followup_task is not None:
+            try:
+                followups = await followup_task
+            except Exception:  # noqa: BLE001
+                log.exception("Thread %s | followup generation failed", thread_id[:8])
+                followups = []
+            if followups:
+                suggestions_payload = {"suggestions": followups}
+                yield (f"event: suggestions/final\ndata: {json.dumps(suggestions_payload)}\n\n")
+                log.info(
+                    "Thread %s | emitted %d follow-up suggestions",
+                    thread_id[:8],
+                    len(followups),
+                )
 
     except Exception as exc:  # noqa: BLE001
         log.exception("Thread %s | run failed", thread_id[:8])
@@ -412,3 +434,65 @@ async def _stream_events(
 
     log.info("Thread %s | run complete | %d chars", thread_id[:8], len(accumulated_content))
     yield "event: end\ndata: null\n\n"
+
+
+def _maybe_start_followups(
+    input_messages: list | None,
+    raw_messages: list,
+):
+    """Return an asyncio Task producing follow-up suggestions, or None.
+
+    Returns None when the last assistant message isn't grounded (no
+    non-empty citations block) — no follow-ups under a "no hits" fallback.
+    """
+    import asyncio
+
+    from app.core.config import settings
+
+    if not raw_messages:
+        return None
+
+    last_assistant = None
+    for msg in reversed(raw_messages):
+        if isinstance(msg, AIMessage):
+            last_assistant = msg
+            break
+    if last_assistant is None:
+        return None
+
+    citations_non_empty = False
+    answer_text = ""
+    content = last_assistant.content
+    if isinstance(content, str):
+        answer_text = content
+    elif isinstance(content, list):
+        text_parts: list[str] = []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            btype = block.get("type")
+            if btype == "text":
+                text_parts.append(str(block.get("text", "")))
+            elif btype == "citations" and block.get("citations"):
+                citations_non_empty = True
+        answer_text = "".join(text_parts)
+
+    if not citations_non_empty:
+        return None
+
+    last_user = ""
+    if input_messages:
+        for msg in reversed(input_messages):
+            if isinstance(msg, HumanMessage):
+                last_user = str(msg.content)
+                break
+    if not last_user or not answer_text:
+        return None
+
+    return asyncio.create_task(
+        generate_followups(
+            last_user,
+            answer_text,
+            n=settings.followup_suggestions_n,
+        )
+    )

@@ -13,6 +13,7 @@ log = get_logger(__name__)
 from app.api.assisted_learning import router as assisted_learning_router  # noqa: E402
 from app.api.chat import router as chat_router  # noqa: E402
 from app.api.openai_compat import router as openai_router  # noqa: E402
+from app.api.suggestions import router as suggestions_router  # noqa: E402
 from app.api.threads import router as threads_router  # noqa: E402
 from app.core.auth import init_providers  # noqa: E402
 from app.core.config import settings  # noqa: E402
@@ -21,8 +22,11 @@ from app.core.tracing import shutdown_langfuse  # noqa: E402
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio
+
     from app.core.thread_store import close_store, init_store
     from app.rag import build_rag_service, set_rag_service
+    from app.suggestions import StarterSuggestionsPool
 
     init_providers()
 
@@ -31,6 +35,14 @@ async def lifespan(app: FastAPI):
     # dependency injection (keeps the route signatures clean).
     set_rag_service(build_rag_service(settings))
     log.info("RAG provider: %s", settings.rag_provider)
+
+    # Starter suggestions pool — built in an asyncio background task so
+    # startup isn't blocked on Milvus + LLM calls. The HTTP layer returns
+    # 503 warming_up until `pool.status == "ready"`.
+    pool = StarterSuggestionsPool(settings=settings)
+    app.state.starter_pool = pool
+    asyncio.create_task(pool.build())
+    log.info("Starter suggestions pool: warming up in background")
 
     if settings.postgres_uri:
         # Production: Postgres-backed checkpointer + thread store
@@ -101,11 +113,14 @@ def _include_routers(app: FastAPI, settings) -> None:
     app.include_router(openai_router)
     app.include_router(threads_router)
     app.include_router(assisted_learning_router)
+    app.include_router(suggestions_router)
 
     if settings.auth_dev_mode:
         from app.api.auth_dev import router as auth_dev_router
+        from app.api.suggestions import admin_router as suggestions_admin_router
 
         app.include_router(auth_dev_router)
+        app.include_router(suggestions_admin_router)
 
 
 app = FastAPI(

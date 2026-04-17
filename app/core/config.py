@@ -63,6 +63,13 @@ class Settings(BaseSettings):
     max_message_window: int = 20  # messages sent to LLM (full history stays in DB)
     max_threads_per_user: int = 100  # 0 = unlimited
 
+    # Suggestions (features_v1) — starter + follow-up prompt generation
+    suggestions_qa_collection: str = ""  # empty = auto-detect latest rag_bot_qa_*
+    suggestions_pool_size: int = 30
+    suggestions_default_n: int = 4
+    suggestions_max_n: int = 10
+    followup_suggestions_n: int = 3
+
     # App
     app_env: str = "development"
     log_level: str = "info"

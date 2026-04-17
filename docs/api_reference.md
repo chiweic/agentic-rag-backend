@@ -189,7 +189,7 @@ Returns 404 if the thread does not exist.
 **Response: SSE stream**
 
 Event sequence (happy path): `messages/partial` (one or more) →
-`messages/complete` → `values` → `end`.
+`messages/complete` → `values` → *optional* `suggestions/final` → `end`.
 
 On failure: an `error` event is emitted, followed by `end`.
 
@@ -202,6 +202,9 @@ data: {"id":"uuid","role":"assistant","content":[{"type":"text","text":"Hello so
 
 event: values
 data: {"thread_id":"uuid","messages":[...normalized messages...]}
+
+event: suggestions/final
+data: {"suggestions":[{"id":"sug_abc","text":"How does this relate to X?"}, ...]}
 
 event: end
 data: null
@@ -216,6 +219,13 @@ Event semantics:
   normalized shape as the partials.
 - `values` — full normalized thread state after the run settles. Same shape
   as `GET /threads/{id}/state`.
+- `suggestions/final` — **optional.** Follow-up prompt suggestions for the
+  latest turn. Emitted only when the assistant reply is grounded (has a
+  non-empty citations block). Absence under no-hits answers is expected, not
+  an error. Payload: `{"suggestions":[{"id","text"}, ...]}`, up to
+  `FOLLOWUP_SUGGESTIONS_N` items (default 3). Generation runs in parallel with
+  the `values` emission so it doesn't extend time-to-first-answer; arrives
+  ~1s after `values` in typical turns.
 - `end` — final sentinel with `data: null`.
 
 On error:
@@ -277,6 +287,56 @@ DELETE /threads/{thread_id}
 Response:
 { "status": "deleted", "thread_id": "uuid" }
 ```
+
+---
+
+## Suggestions
+
+Starter prompts for empty-state UIs. Follow-up suggestions for in-thread UX
+arrive on the `/threads/{id}/runs/stream` SSE as `suggestions/final` (see above)
+and do not have a separate HTTP endpoint.
+
+### Get Starter Suggestions
+
+```
+GET /suggestions/starter?n=4
+
+Success (200):
+{
+  "suggestions": [
+    { "id": "sug_abc123", "text": "How do I start meditating?" },
+    { "id": "sug_def456", "text": "Tell me about the Diamond Sutra" },
+    ...
+  ]
+}
+
+Warming up (503):
+{ "detail": { "status": "warming_up" } }
+
+Build failed (500):
+{ "detail": { "status": "failed", "error": "..." } }
+```
+
+- `n` is clamped to `[1, SUGGESTIONS_MAX_N]` (default max 10). If omitted,
+  defaults to `SUGGESTIONS_DEFAULT_N` (default 4).
+- Suggestions are a random subset of an in-process pool built at startup from
+  the latest `rag_bot_qa_*` Milvus collection, rephrased by `SUGGEST_LLM`
+  (falls back to `GEN_LLM`). Different requests see different subsets.
+- The pool builds asynchronously in the lifespan; until it's ready the endpoint
+  returns 503 `warming_up`. The frontend should retry or display a placeholder.
+- Bearer-less (same as `/v1/*`) so empty-state prompts can load pre-auth.
+
+### Refresh Starter Pool (dev-only)
+
+```
+POST /admin/suggestions/refresh
+
+Success (200):
+{ "triggered": true, "prior_status": "ready" }
+```
+
+Kicks off a pool rebuild in the background. Returns immediately. Mounted only
+when `AUTH_DEV_MODE=true` — returns 404 in production.
 
 ---
 
