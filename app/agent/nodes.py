@@ -80,11 +80,17 @@ def retrieve(state: AgentState, config: RunnableConfig) -> dict:
     service = _rag_service(config)
     hits = service.search(query, source_type=source_type, limit=settings.retrieval_limit)
 
+    rerank_marker = (
+        f" | rerank={settings.rerank_candidate_k}->{settings.rerank_top_n}"
+        if settings.rerank_enabled
+        else ""
+    )
     log.info(
-        "retrieve | source=%s | query=%r | %d hits",
+        "retrieve | source=%s | query=%r | %d hits%s",
         source_type,
         query[:60],
         len(hits),
+        rerank_marker,
     )
 
     return {
