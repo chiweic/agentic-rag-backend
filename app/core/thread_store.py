@@ -215,13 +215,29 @@ async def get_thread(thread_id: str) -> dict | None:
     }
 
 
-async def list_threads(user_id: str, include_archived: bool = False) -> list[dict]:
+async def list_threads(
+    user_id: str,
+    include_archived: bool = False,
+    include_deep_dive: bool = False,
+) -> list[dict]:
+    """List threads owned by `user_id`.
+
+    Deep-dive threads (metadata.deep_dive == True) are hidden by default
+    because they're ephemeral research contexts anchored to a parent
+    thread, not first-class conversations. Pass `include_deep_dive=True`
+    to see them in a future "research history" view.
+    """
     _require_ready()
+
+    def _is_deep_dive(meta: dict | None) -> bool:
+        return bool(meta and meta.get("deep_dive"))
 
     if _is_memory():
         items = [t.copy() for t in _memory.values() if t.get("user_id") == user_id]
         if not include_archived:
             items = [t for t in items if not t["is_archived"]]
+        if not include_deep_dive:
+            items = [t for t in items if not _is_deep_dive(t.get("metadata"))]
         items.sort(key=lambda t: t["created_at"], reverse=True)
         return items
 
@@ -231,6 +247,10 @@ async def list_threads(user_id: str, include_archived: bool = False) -> list[dic
     )
     if not include_archived:
         query += " AND is_archived = FALSE"
+    # Postgres JSONB deep-dive filter — cheap since thread_metadata
+    # already has a user_id index covering the common case.
+    if not include_deep_dive:
+        query += " AND (metadata->>'deep_dive' IS NULL OR metadata->>'deep_dive' = 'false')"
     query += " ORDER BY created_at DESC"
 
     conn = await _ensure_connection()

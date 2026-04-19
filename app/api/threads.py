@@ -93,8 +93,14 @@ async def create_thread(
 # GET /threads — list all threads (for sidebar)
 # ---------------------------------------------------------------------------
 @router.get("/threads")
-async def list_threads(user: UserClaims = Depends(get_current_user)):
-    threads = await thread_store.list_threads(user_id=user.user_id)
+async def list_threads(
+    user: UserClaims = Depends(get_current_user),
+    include_deep_dive: bool = False,
+):
+    threads = await thread_store.list_threads(
+        user_id=user.user_id,
+        include_deep_dive=include_deep_dive,
+    )
 
     log.info("Listed %d threads for user %s", len(threads), user.user_id)
     # Strip user_id from output
