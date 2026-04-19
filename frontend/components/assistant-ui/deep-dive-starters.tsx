@@ -1,7 +1,7 @@
 "use client";
 
 import { useAui } from "@assistant-ui/store";
-import { SearchIcon } from "lucide-react";
+import { GraduationCapIcon, SearchIcon } from "lucide-react";
 import { createContext, type FC, useContext } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -41,11 +41,24 @@ export const DeepDiveStarters: FC<{ variant?: "start" | "followup" }> = ({
   const aui = useAui();
 
   const prompts = buildDeepDivePrompts(source);
-  const heading = variant === "start" ? "從這些問題開始:" : "繼續探索:";
+  const exploreHeading = variant === "start" ? "從這些問題開始:" : "繼續探索:";
+  const quizPromptText = buildQuizPromptText(source);
+
+  const send = (text: string) => {
+    if (aui.thread().getState().isRunning) return;
+    const composer = aui.composer();
+    aui.thread().append({
+      content: [{ type: "text", text }],
+      runConfig: composer.getState().runConfig,
+    });
+  };
 
   return (
     <div className="w-full">
-      <div className="mb-3 px-1 text-muted-foreground text-sm">{heading}</div>
+      {/* Section 1: open-ended exploration of the pinned source. */}
+      <div className="mb-3 px-1 text-muted-foreground text-sm">
+        {exploreHeading}
+      </div>
       <div className="grid w-full gap-2 pb-4 @md:grid-cols-2">
         {prompts.map((prompt) => (
           <Button
@@ -53,14 +66,7 @@ export const DeepDiveStarters: FC<{ variant?: "start" | "followup" }> = ({
             variant="ghost"
             type="button"
             className="h-auto w-full flex-col items-start gap-1 rounded-3xl border border-border/70 bg-background/90 px-4 py-4 text-left text-sm shadow-sm transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:bg-muted/40"
-            onClick={() => {
-              if (aui.thread().getState().isRunning) return;
-              const composer = aui.composer();
-              aui.thread().append({
-                content: [{ type: "text", text: prompt.text }],
-                runConfig: composer.getState().runConfig,
-              });
-            }}
+            onClick={() => send(prompt.text)}
           >
             <span className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
               <SearchIcon className="size-3" />
@@ -72,6 +78,25 @@ export const DeepDiveStarters: FC<{ variant?: "start" | "followup" }> = ({
           </Button>
         ))}
       </div>
+
+      {/* Section 2: self-test. v1 sends a quiz-style prompt via the same
+          chat flow; features_v2.md item 3 plans a richer quiz flow
+          (preferences panel + question-flow UI) that will replace this. */}
+      <div className="mb-3 px-1 text-muted-foreground text-sm">自我測試:</div>
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-auto w-full flex-col items-start gap-1 rounded-3xl border border-border/70 bg-background/90 px-4 py-4 text-left text-sm shadow-sm transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:bg-muted/40"
+        onClick={() => send(quizPromptText)}
+      >
+        <span className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+          <GraduationCapIcon className="size-3" />
+          小測驗
+        </span>
+        <span className="text-pretty font-medium text-foreground leading-6">
+          對內容有一定理解，開始自我測試
+        </span>
+      </Button>
     </div>
   );
 };
@@ -105,4 +130,22 @@ const buildDeepDivePrompts = (
       text: `請以更淺顯的方式解釋「${handle}」的核心概念。`,
     },
   ];
+};
+
+/**
+ * Prompt dispatched when the user clicks the self-test button.
+ *
+ * Stop-gap until features_v2.md item 3 ships its richer quiz flow
+ * (preferences panel + question-flow UI + server-side quiz generation).
+ * Shape: multi-question quiz with deferred answers so the model asks
+ * one question, waits for the user's reply, then grades and explains.
+ */
+const buildQuizPromptText = (source: SourceRecord | null): string => {
+  const handle =
+    source?.chapter_title || source?.title || source?.book_title || "這份來源";
+  return (
+    `我對「${handle}」的內容已有一定理解,請針對重點出三到五題測驗我。` +
+    `每次先只給一題,等我回答後再判斷對錯並解釋,接著再出下一題。` +
+    `題目涵蓋事實、理解與應用三種層次為佳。`
+  );
 };
