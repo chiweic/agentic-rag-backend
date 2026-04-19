@@ -142,33 +142,50 @@ const SourceContentView: FC<{ state: SourceState }> = ({ state }) => {
   }
 
   const { record } = state;
+  // The overlay header already shows `record.title`; rendering it again
+  // as an h2 here duplicated it visually. Similarly, for faguquanji
+  // records `title` and `chapter_title` are the same string, so we only
+  // surface chapter_title when it actually adds information.
+  const showChapter =
+    !!record.chapter_title && record.chapter_title !== record.title;
+  const hasMetaRow =
+    showChapter ||
+    !!record.attribution ||
+    !!record.publish_date ||
+    !!record.source_url;
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="border-b px-5 py-4">
-        {record.book_title ? (
-          <div className="mb-1 text-muted-foreground text-xs uppercase tracking-[0.12em]">
-            {record.book_title}
-          </div>
-        ) : null}
-        <h2 className="text-foreground text-base font-semibold leading-snug">
-          {record.title}
-        </h2>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
-          {record.chapter_title ? <span>{record.chapter_title}</span> : null}
-          {record.attribution ? <span>— {record.attribution}</span> : null}
-          {record.publish_date ? <span>· {record.publish_date}</span> : null}
-          {record.source_url ? (
-            <a
-              href={record.source_url}
-              target="_blank"
-              rel="noreferrer"
-              className="ml-auto underline hover:text-foreground"
+      {(record.book_title || hasMetaRow) && (
+        <div className="border-b px-5 py-4">
+          {record.book_title ? (
+            <div className="text-muted-foreground text-xs uppercase tracking-[0.12em]">
+              {record.book_title}
+            </div>
+          ) : null}
+          {hasMetaRow ? (
+            <div
+              className={`${record.book_title ? "mt-2 " : ""}flex flex-wrap items-center gap-2 text-muted-foreground text-xs`}
             >
-              Open source ↗
-            </a>
+              {showChapter ? <span>{record.chapter_title}</span> : null}
+              {record.attribution ? <span>— {record.attribution}</span> : null}
+              {record.publish_date ? (
+                <span>· {record.publish_date}</span>
+              ) : null}
+              {record.source_url ? (
+                <a
+                  href={record.source_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ml-auto underline hover:text-foreground"
+                >
+                  Open source ↗
+                </a>
+              ) : null}
+            </div>
           ) : null}
         </div>
-      </div>
+      )}
       <div className="flex-1 overflow-y-auto px-5 py-4 text-sm leading-relaxed whitespace-pre-wrap">
         {record.chunks.map((chunk) => (
           <p key={chunk.chunk_id} className="mb-4 last:mb-0">
