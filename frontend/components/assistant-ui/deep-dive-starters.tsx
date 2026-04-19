@@ -1,7 +1,14 @@
 "use client";
 
 import { useAui } from "@assistant-ui/store";
-import { GraduationCapIcon, SearchIcon } from "lucide-react";
+import {
+  GraduationCapIcon,
+  LightbulbIcon,
+  ListIcon,
+  type LucideIcon,
+  QuoteIcon,
+  StarIcon,
+} from "lucide-react";
 import { createContext, type FC, useContext } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -59,50 +66,49 @@ export const DeepDiveStarters: FC<{ variant?: "start" | "followup" }> = ({
       <div className="mb-3 px-1 text-muted-foreground text-sm">
         {exploreHeading}
       </div>
-      <div className="grid w-full gap-2 pb-4 @md:grid-cols-2">
-        {prompts.map((prompt) => (
-          <Button
-            key={prompt.id}
-            variant="ghost"
-            type="button"
-            className="h-auto w-full flex-col items-start gap-1 rounded-3xl border border-border/70 bg-background/90 px-4 py-4 text-left text-sm shadow-sm transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:bg-muted/40"
-            onClick={() => send(prompt.text)}
-          >
-            <span className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              <SearchIcon className="size-3" />
-              {prompt.label}
-            </span>
-            <span className="text-pretty font-medium text-foreground leading-6">
-              {prompt.text}
-            </span>
-          </Button>
-        ))}
+      <div className="flex w-full flex-wrap gap-2 pb-4">
+        {prompts.map((prompt) => {
+          const Icon = prompt.icon;
+          return (
+            <Button
+              key={prompt.id}
+              variant="ghost"
+              type="button"
+              className="h-auto w-auto gap-2 rounded-2xl border border-border/70 bg-background/90 px-3 py-1.5 text-sm font-medium shadow-sm transition-all hover:border-foreground/20 hover:bg-muted/40"
+              onClick={() => send(prompt.text)}
+            >
+              <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+              <span>{prompt.label}</span>
+            </Button>
+          );
+        })}
+        {/* Self-test merged into the same row. v1 dispatches a quiz-style
+            prompt via the chat; features_v2.md item 3 will later swap
+            this onClick for a richer quiz flow (preferences + question-
+            flow UI). */}
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-auto w-auto gap-2 rounded-2xl border border-border/70 bg-background/90 px-3 py-1.5 text-sm font-medium shadow-sm transition-all hover:border-foreground/20 hover:bg-muted/40"
+          onClick={() => send(quizPromptText)}
+        >
+          <GraduationCapIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span>小測驗</span>
+        </Button>
       </div>
-
-      {/* Section 2: self-test. v1 sends a quiz-style prompt via the same
-          chat flow; features_v2.md item 3 plans a richer quiz flow
-          (preferences panel + question-flow UI) that will replace this. */}
-      <div className="mb-3 px-1 text-muted-foreground text-sm">自我測試:</div>
-      <Button
-        type="button"
-        variant="ghost"
-        className="h-auto w-full flex-col items-start gap-1 rounded-3xl border border-border/70 bg-background/90 px-4 py-4 text-left text-sm shadow-sm transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:bg-muted/40"
-        onClick={() => send(quizPromptText)}
-      >
-        <span className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-          <GraduationCapIcon className="size-3" />
-          小測驗
-        </span>
-        <span className="text-pretty font-medium text-foreground leading-6">
-          對內容有一定理解，開始自我測試
-        </span>
-      </Button>
     </div>
   );
 };
 
-type DeepDivePrompt = { id: string; label: string; text: string };
+type DeepDivePrompt = {
+  id: string;
+  label: string;
+  text: string;
+  icon: LucideIcon;
+};
 
+// Icons chosen so each action is identifiable at a glance without
+// reading the label — helpful since the cards are now label-only.
 const buildDeepDivePrompts = (
   source: SourceRecord | null,
 ): DeepDivePrompt[] => {
@@ -113,21 +119,25 @@ const buildDeepDivePrompts = (
       id: "summarize",
       label: "總結",
       text: `請總結「${handle}」的內容。`,
+      icon: ListIcon,
     },
     {
       id: "main-points",
       label: "重點",
       text: `「${handle}」的主要重點是什麼?`,
+      icon: StarIcon,
     },
     {
       id: "critical",
       label: "關鍵句子",
       text: `請列出「${handle}」中最重要的句子。`,
+      icon: QuoteIcon,
     },
     {
       id: "explain",
       label: "深入淺出",
       text: `請以更淺顯的方式解釋「${handle}」的核心概念。`,
+      icon: LightbulbIcon,
     },
   ];
 };
