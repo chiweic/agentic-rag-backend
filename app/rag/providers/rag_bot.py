@@ -192,6 +192,7 @@ class RagBotService:
         hits: list[RetrievalHit],
         *,
         history: list[dict[str, str]] | None = None,
+        scope_record_id: str | None = None,
     ) -> RagAnswer:
         from rag_bot.rag.generator import build_rag_prompt, generate_answer
 
@@ -205,12 +206,14 @@ class RagBotService:
             )
 
         native_hits = self._lookup_cached_hits(hits) or self._requery(query, hits)
+        prompt_prefix = _deep_dive_prompt_prefix(hits) if scope_record_id else ""
 
         if not history:
             generated = generate_answer(
                 question=query,
                 hits=native_hits,
                 chat_model=self._chat_model,
+                prompt_prefix=prompt_prefix,
             )
             return RagAnswer(text=generated.answer, citations=hits)
 
@@ -219,7 +222,7 @@ class RagBotService:
         # so the context-injection format stays identical to rag_bot's.
         from langchain_core.messages import AIMessage, HumanMessage
 
-        prompt = build_rag_prompt(query, native_hits)
+        prompt = build_rag_prompt(query, native_hits, prompt_prefix=prompt_prefix)
         messages: list[Any] = []
         for turn in history:
             role = turn.get("role")
@@ -304,6 +307,34 @@ class RagBotService:
                 **refs,
             },
         )
+
+
+def _deep_dive_prompt_prefix(hits: list[RetrievalHit]) -> str:
+    """Prompt prefix that pins the LLM to the pinned source in Deep Dive mode.
+
+    Called when `scope_record_id` is set — i.e. the chunks are all from
+    one record and the user is exploring it via the deep-dive overlay.
+    The text tells the model to prefer the provided content over its
+    training knowledge and to surface gaps rather than guess.
+    """
+    first = hits[0] if hits else None
+    if first is None:
+        return ""
+    meta = first.metadata or {}
+    label_parts = [
+        meta.get("book_title") or None,
+        meta.get("chapter_title") or None,
+        first.title or None,
+    ]
+    source_label = " · ".join(part for part in label_parts if part)
+    return (
+        "You are in Deep Dive mode — the user is exploring one specific "
+        "source and has pinned it as the sole reference. Base your answer "
+        "on the content below and quote specifically from it when useful. "
+        "If the source does not address the question, say so directly "
+        "rather than drawing on outside knowledge.\n"
+        + (f"Source: {source_label}\n" if source_label else "")
+    )
 
 
 def _response_to_text(response: Any) -> str:

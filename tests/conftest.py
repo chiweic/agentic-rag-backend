@@ -96,8 +96,16 @@ class FakeRagService:
         hits: list[RetrievalHit],
         *,
         history: list[dict[str, str]] | None = None,
+        scope_record_id: str | None = None,
     ) -> RagAnswer:
-        self.generate_calls.append({"query": query, "hit_count": len(hits), "history": history})
+        self.generate_calls.append(
+            {
+                "query": query,
+                "hit_count": len(hits),
+                "history": history,
+                "scope_record_id": scope_record_id,
+            }
+        )
         return RagAnswer(
             text=f"{self.MARKER} for query: {query}",
             citations=hits,

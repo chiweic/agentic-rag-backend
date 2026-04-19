@@ -185,7 +185,12 @@ def generate(state: AgentState, config: RunnableConfig) -> dict:
         history: list[dict[str, str]] = []
     else:
         history = _build_history(state)
-        answer = service.generate(state.query, hits, history=history or None)
+        answer = service.generate(
+            state.query,
+            hits,
+            history=history or None,
+            scope_record_id=state.scope_record_id,
+        )
         content_text = answer.text
         citations_block = [c.model_dump(mode="json") for c in answer.citations]
 

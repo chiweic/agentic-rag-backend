@@ -148,6 +148,43 @@ async def test_threads_without_scope_uses_semantic_search(client, fake_rag_servi
 
 
 @pytest.mark.asyncio
+async def test_scope_record_id_reaches_generate(client, fake_rag_service):
+    """The generate node must see scope_record_id so the provider can
+    inject a deep-dive prompt prefix. Without it, the LLM can happily
+    answer from training knowledge even when retrieval is pinned."""
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={
+            "input": {"messages": [{"role": "user", "content": "Summarize this"}]},
+            "metadata": {
+                "scope_record_id": "REC-ABC",
+                "scope_source_type": "faguquanji",
+            },
+        },
+    )
+    assert resp.status_code == 200
+    assert len(fake_rag_service.generate_calls) == 1
+    assert fake_rag_service.generate_calls[0]["scope_record_id"] == "REC-ABC"
+
+
+@pytest.mark.asyncio
+async def test_scope_record_id_absent_on_regular_thread(client, fake_rag_service):
+    """Regular (non-scoped) turns pass scope_record_id=None to generate."""
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={"input": {"messages": [{"role": "user", "content": "hi"}]}},
+    )
+    assert resp.status_code == 200
+    assert fake_rag_service.generate_calls[0]["scope_record_id"] is None
+
+
+@pytest.mark.asyncio
 async def test_threads_generate_receives_chat_history(client, fake_rag_service):
     """The second turn should carry turn 1 (Q + A, text-only) as history."""
     resp = await client.post("/threads", json={})

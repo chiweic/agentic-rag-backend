@@ -30,6 +30,10 @@ import {
   ComposerAttachments,
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
+import {
+  DeepDiveStarters,
+  useDeepDiveSource,
+} from "@/components/assistant-ui/deep-dive-overlay";
 import { useDeepDive } from "@/components/assistant-ui/deep-dive-provider";
 import { FollowupSuggestions } from "@/components/assistant-ui/followup-suggestions";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
@@ -97,19 +101,29 @@ const ThreadScrollToBottom: FC = () => {
 };
 
 const ThreadWelcome: FC = () => {
+  // Inside the Deep Dive overlay, `DeepDiveSourceContext` is populated
+  // — swap global starter prompts for source-aware ones so empty-state
+  // clicks align with the pinned record's context.
+  const deepDiveSource = useDeepDiveSource();
+  const isDeepDive = deepDiveSource !== null;
+
   return (
     <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col">
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
         <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
           <h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both font-semibold text-3xl duration-200">
-            Let&apos;s start with something grounded.
+            {isDeepDive
+              ? "Explore this source."
+              : "Let's start with something grounded."}
           </h1>
           <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-muted-foreground text-lg delay-75 duration-200">
-            Pick a starter prompt or ask your own question.
+            {isDeepDive
+              ? "Ask anything about the pinned content on the left."
+              : "Pick a starter prompt or ask your own question."}
           </p>
         </div>
       </div>
-      <StarterSuggestions />
+      {isDeepDive ? <DeepDiveStarters /> : <StarterSuggestions />}
     </div>
   );
 };

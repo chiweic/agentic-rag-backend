@@ -70,6 +70,13 @@ class RagService(Protocol):
         hits: list[RetrievalHit],
         *,
         history: list[dict[str, str]] | None = None,
+        scope_record_id: str | None = None,
     ) -> RagAnswer:
-        """Generate a grounded answer from the retrieved hits."""
+        """Generate a grounded answer from the retrieved hits.
+
+        When `scope_record_id` is set (deep-dive mode), providers should
+        instruct the LLM to stay strictly inside the pinned source. The
+        rag_bot provider prepends a deep-dive prompt prefix; the null
+        provider ignores this hint.
+        """
         ...

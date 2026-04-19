@@ -2,10 +2,12 @@
 
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useLangGraphRuntime } from "@assistant-ui/react-langgraph";
-import { XIcon } from "lucide-react";
-import { type FC, useEffect, useState } from "react";
+import { useAui } from "@assistant-ui/store";
+import { SearchIcon, XIcon } from "lucide-react";
+import { createContext, type FC, useContext, useEffect, useState } from "react";
 import type { DeepDiveTarget } from "@/components/assistant-ui/deep-dive-provider";
 import { Thread } from "@/components/assistant-ui/thread";
+import { Button } from "@/components/ui/button";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -18,6 +20,18 @@ type OverlayProps = {
   target: DeepDiveTarget;
   onClose: () => void;
 };
+
+/**
+ * Populated inside the Deep Dive overlay with the fetched source record
+ * so nested components (specifically the deep-dive Thread's welcome)
+ * can render source-aware starter prompts. `null` means "not in a deep
+ * dive" or "source still loading".
+ */
+export const DeepDiveSourceContext = createContext<SourceRecord | null>(null);
+
+/** Hook used by `ThreadWelcome` to decide between default and deep-dive starters. */
+export const useDeepDiveSource = (): SourceRecord | null =>
+  useContext(DeepDiveSourceContext);
 
 /**
  * Fullscreen Deep Dive workspace:
@@ -33,64 +47,15 @@ type OverlayProps = {
  */
 export const DeepDiveOverlay: FC<OverlayProps> = ({ target, onClose }) => {
   const runtime = useDeepDiveRuntime(target);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex flex-col bg-background"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Deep dive"
-    >
-      <header className="flex items-center justify-between border-b px-4 py-2">
-        <div className="min-w-0">
-          <div className="text-xs text-muted-foreground uppercase tracking-[0.12em]">
-            Deep Dive
-          </div>
-          <div className="truncate text-sm font-medium">
-            {target.sourceType} · {target.recordId}
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="inline-flex size-8 items-center justify-center rounded-md hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-          aria-label="Close deep dive"
-        >
-          <XIcon className="size-4" />
-        </button>
-      </header>
-      <div className="flex-1 min-h-0">
-        <AssistantRuntimeProvider runtime={runtime}>
-          <ResizablePanelGroup orientation="horizontal">
-            <ResizablePanel defaultSize={55} minSize={30}>
-              <SourceContentView target={target} />
-            </ResizablePanel>
-            <ResizableHandle />
-            <ResizablePanel defaultSize={45} minSize={30}>
-              <Thread />
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </AssistantRuntimeProvider>
-      </div>
-    </div>
-  );
-};
-
-const SourceContentView: FC<{ target: DeepDiveTarget }> = ({ target }) => {
   const [state, setState] = useState<
     | { status: "loading" }
     | { status: "error"; message: string }
     | { status: "ready"; record: SourceRecord }
   >({ status: "loading" });
 
+  // Fetch the record at the overlay level so both panes — source
+  // viewer on the left AND the Thread's deep-dive welcome on the right
+  // (via DeepDiveSourceContext) — share a single fetch.
   useEffect(() => {
     let cancelled = false;
     setState({ status: "loading" });
@@ -111,6 +76,66 @@ const SourceContentView: FC<{ target: DeepDiveTarget }> = ({ target }) => {
     };
   }, [target.recordId, target.sourceType]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const sourceRecord = state.status === "ready" ? state.record : null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-background"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Deep dive"
+    >
+      <header className="flex items-center justify-between border-b px-4 py-2">
+        <div className="min-w-0">
+          <div className="text-xs text-muted-foreground uppercase tracking-[0.12em]">
+            Deep Dive
+          </div>
+          <div className="truncate text-sm font-medium">
+            {sourceRecord?.title ?? `${target.sourceType} · ${target.recordId}`}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex size-8 items-center justify-center rounded-md hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          aria-label="Close deep dive"
+        >
+          <XIcon className="size-4" />
+        </button>
+      </header>
+      <div className="flex-1 min-h-0">
+        <DeepDiveSourceContext.Provider value={sourceRecord}>
+          <AssistantRuntimeProvider runtime={runtime}>
+            <ResizablePanelGroup orientation="horizontal">
+              <ResizablePanel defaultSize={55} minSize={30}>
+                <SourceContentView state={state} />
+              </ResizablePanel>
+              <ResizableHandle />
+              <ResizablePanel defaultSize={45} minSize={30}>
+                <Thread />
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </AssistantRuntimeProvider>
+        </DeepDiveSourceContext.Provider>
+      </div>
+    </div>
+  );
+};
+
+type SourceState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; record: SourceRecord };
+
+const SourceContentView: FC<{ state: SourceState }> = ({ state }) => {
   if (state.status === "loading") {
     return (
       <div className="flex h-full items-center justify-center p-6 text-muted-foreground text-sm">
@@ -163,6 +188,91 @@ const SourceContentView: FC<{ target: DeepDiveTarget }> = ({ target }) => {
       </div>
     </div>
   );
+};
+
+/**
+ * Source-aware starter prompts rendered in place of the main chat's
+ * global StarterSuggestions when the Thread is inside a Deep Dive.
+ *
+ * Uses the fetched record (via DeepDiveSourceContext) so prompts
+ * reference the actual source the user pinned. Falls back to generic
+ * prompts if the record hasn't loaded yet — the user may start typing
+ * while the source fetch is in flight.
+ */
+export const DeepDiveStarters: FC = () => {
+  const source = useDeepDiveSource();
+  const aui = useAui();
+
+  const prompts = buildDeepDivePrompts(source);
+
+  return (
+    <div className="w-full">
+      <div className="mb-3 px-1 text-muted-foreground text-sm">
+        Try one of these to start your Deep Dive
+      </div>
+      <div className="grid w-full gap-2 pb-4 @md:grid-cols-2">
+        {prompts.map((prompt) => (
+          <Button
+            key={prompt.id}
+            variant="ghost"
+            type="button"
+            className="h-auto w-full flex-col items-start gap-1 rounded-3xl border border-border/70 bg-background/90 px-4 py-4 text-left text-sm shadow-sm transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:bg-muted/40"
+            onClick={() => {
+              if (aui.thread().getState().isRunning) return;
+              const composer = aui.composer();
+              aui.thread().append({
+                content: [{ type: "text", text: prompt.text }],
+                runConfig: composer.getState().runConfig,
+              });
+            }}
+          >
+            <span className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              <SearchIcon className="size-3" />
+              {prompt.label}
+            </span>
+            <span className="text-pretty font-medium text-foreground leading-6">
+              {prompt.text}
+            </span>
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+type DeepDivePrompt = { id: string; label: string; text: string };
+
+const buildDeepDivePrompts = (
+  source: SourceRecord | null,
+): DeepDivePrompt[] => {
+  // Prefer the most specific available handle for natural prose.
+  const handle =
+    source?.chapter_title ||
+    source?.title ||
+    source?.book_title ||
+    "this source";
+  return [
+    {
+      id: "summarize",
+      label: "Summarize",
+      text: `Summarize ${handle}.`,
+    },
+    {
+      id: "main-points",
+      label: "Main points",
+      text: `What are the main points of ${handle}?`,
+    },
+    {
+      id: "critical",
+      label: "Critical sentences",
+      text: `Highlight the most important sentences in ${handle}.`,
+    },
+    {
+      id: "explain",
+      label: "Simpler terms",
+      text: `Explain the key ideas of ${handle} in simpler terms.`,
+    },
+  ];
 };
 
 /**

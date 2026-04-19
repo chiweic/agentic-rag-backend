@@ -37,6 +37,7 @@ class NullRagService:
         hits: list[RetrievalHit],
         *,
         history: list[dict[str, str]] | None = None,
+        scope_record_id: str | None = None,
     ) -> RagAnswer:
         return RagAnswer(
             text=("(no RAG provider configured) — echoing query: " f"{query}"),
