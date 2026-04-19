@@ -5,6 +5,7 @@ import {
   useRemoteThreadListRuntime,
 } from "@assistant-ui/react";
 import { useLangGraphRuntime } from "@assistant-ui/react-langgraph";
+import { DeepDiveProvider } from "@/components/assistant-ui/deep-dive-provider";
 import { Thread } from "@/components/assistant-ui/thread";
 import { ThreadListSidebar } from "@/components/assistant-ui/thread-list-sidebar";
 import {
@@ -14,6 +15,7 @@ import {
   setTokenResolver as setChatApiToken,
 } from "@/lib/chatApi";
 import { clearFollowupSuggestions } from "@/lib/followupSuggestions";
+import { setTokenResolver as setSourcesToken } from "@/lib/sources";
 import {
   setTokenResolver as setAdapterToken,
   threadListAdapter,
@@ -31,6 +33,7 @@ async function fetchAccessToken(): Promise<string | null> {
 // do not race ahead unauthenticated on first render.
 setChatApiToken(fetchAccessToken);
 setAdapterToken(fetchAccessToken);
+setSourcesToken(fetchAccessToken);
 
 function useLangGraphRuntimeHook() {
   return useLangGraphRuntime({
@@ -66,12 +69,14 @@ export function Assistant() {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <div className="flex h-full">
-        <ThreadListSidebar />
-        <div className="flex-1">
-          <Thread />
+      <DeepDiveProvider>
+        <div className="flex h-full">
+          <ThreadListSidebar />
+          <div className="flex-1">
+            <Thread />
+          </div>
         </div>
-      </div>
+      </DeepDiveProvider>
     </AssistantRuntimeProvider>
   );
 }

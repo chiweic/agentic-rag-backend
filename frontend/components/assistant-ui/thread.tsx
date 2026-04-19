@@ -21,6 +21,7 @@ import {
   MoreHorizontalIcon,
   PencilIcon,
   RefreshCwIcon,
+  SearchIcon,
   SquareIcon,
 } from "lucide-react";
 import type { FC } from "react";
@@ -29,6 +30,7 @@ import {
   ComposerAttachments,
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
+import { useDeepDive } from "@/components/assistant-ui/deep-dive-provider";
 import { FollowupSuggestions } from "@/components/assistant-ui/followup-suggestions";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { Reasoning } from "@/components/assistant-ui/reasoning";
@@ -216,6 +218,10 @@ const AssistantMessageCitations: FC = () => {
         ?.citations,
   );
   const isLast = useAuiState((s) => s.message.isLast);
+  const parentThreadId = useAuiState(
+    (s) => s.threadListItem.externalId ?? s.threadListItem.remoteId ?? null,
+  );
+  const deepDive = useDeepDive();
 
   if (!citations?.length) return null;
   const adapted = toToolUiCitations(citations);
@@ -223,25 +229,50 @@ const AssistantMessageCitations: FC = () => {
   return (
     <>
       <div className="mt-4 grid w-full gap-3 @md:grid-cols-2">
-        {adapted.map((c) => (
-          <div key={c.id} className="flex flex-col gap-1">
-            {/* Card is display-only — disabling pointer events on the
-                tool-ui Citation suppresses its built-in click/hover so
-                "View Source" below is the single action target. */}
-            <div className="pointer-events-none">
-              <ToolUiCitation {...c} variant="default" />
+        {adapted.map((c) => {
+          // Strip Deep Dive-only fields before passing to tool-ui so the
+          // SerializableCitation shape stays clean for the card.
+          const { recordId, sourceType, ...display } = c;
+          const canDeepDive = Boolean(recordId && sourceType);
+          return (
+            <div key={c.id} className="flex flex-col gap-1">
+              {/* Card is display-only — disabling pointer events on the
+                  tool-ui Citation suppresses its built-in click/hover
+                  so "Deep Dive" / "View Source" below are the single
+                  action targets. */}
+              <div className="pointer-events-none">
+                <ToolUiCitation {...display} variant="default" />
+              </div>
+              <div className="mt-1 flex items-center gap-3 px-1 text-muted-foreground text-xs">
+                {canDeepDive ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      deepDive.open({
+                        recordId: recordId!,
+                        sourceType: sourceType!,
+                        parentThreadId,
+                      })
+                    }
+                    className="inline-flex items-center gap-1 rounded-md hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  >
+                    <SearchIcon className="size-3" />
+                    Deep Dive
+                  </button>
+                ) : null}
+                <a
+                  href={c.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 rounded-md hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                >
+                  <ExternalLinkIcon className="size-3" />
+                  View Source
+                </a>
+              </div>
             </div>
-            <a
-              href={c.href}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-1 inline-flex items-center gap-1 self-start rounded-md px-1 text-muted-foreground text-xs hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-            >
-              View Source
-              <ExternalLinkIcon className="size-3" />
-            </a>
-          </div>
-        ))}
+          );
+        })}
       </div>
       {isLast ? <FollowupSuggestions /> : null}
     </>

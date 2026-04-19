@@ -188,4 +188,32 @@ describe("toToolUiCitations", () => {
     );
     expect(out.every((c) => c.type === "article")).toBe(true);
   });
+
+  it("carries recordId + sourceType for the Deep Dive action", () => {
+    const [out] = toToolUiCitations([
+      cite({
+        chunk_id: "c1",
+        source_url: "https://a/1",
+        metadata: {
+          source_type: "faguquanji",
+          record_id: "REC-99",
+          book_title: "Book",
+        },
+      }),
+    ]);
+    expect(out.recordId).toBe("REC-99");
+    expect(out.sourceType).toBe("faguquanji");
+  });
+
+  it("omits recordId when backend doesn't supply it, keeps sourceType", () => {
+    const [out] = toToolUiCitations([
+      cite({
+        chunk_id: "c1",
+        source_url: "https://a/1",
+        metadata: { source_type: "qa" },
+      }),
+    ]);
+    expect(out.recordId).toBeUndefined();
+    expect(out.sourceType).toBe("qa");
+  });
 });

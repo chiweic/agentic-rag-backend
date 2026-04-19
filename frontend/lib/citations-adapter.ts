@@ -2,6 +2,17 @@ import type { SerializableCitation } from "@/components/tool-ui/citation";
 import type { Citation } from "@/lib/chatApi";
 
 /**
+ * tool-ui's SerializableCitation extended with the backend identifiers
+ * we need to trigger a Deep Dive (whole-record chat). tool-ui ignores
+ * unknown fields at render time, so this is safe to pass directly into
+ * `<Citation {...c}>` while also being readable by our own code.
+ */
+export type DeepDiveableCitation = SerializableCitation & {
+  recordId?: string;
+  sourceType?: string;
+};
+
+/**
  * Backend emits one citation per retrieved chunk. tool-ui's CitationList
  * wants one entry per *source* (so the stacked variant shows N unique
  * sources, not N chunks). This adapter:
@@ -13,12 +24,14 @@ import type { Citation } from "@/lib/chatApi";
  * 4. Concatenates chunk text into a single snippet per source (capped).
  * 5. Coerces the backend's `YYYY-MM-DD` publish_date into a valid ISO
  *    datetime since tool-ui's Zod schema uses `.datetime()`.
+ * 6. Carries the backend's `record_id` + `source_type` alongside tool-ui
+ *    fields so the card's Deep Dive action can kick off scoped chat.
  */
 const SNIPPET_CHAR_CAP = 400;
 
 export function toToolUiCitations(
   backendCitations: Citation[],
-): SerializableCitation[] {
+): DeepDiveableCitation[] {
   // Step 1: dedupe by chunk_id.
   const uniqueByChunk = new Map<string, Citation>();
   for (const c of backendCitations) {
@@ -36,7 +49,7 @@ export function toToolUiCitations(
     bySource.set(c.source_url, list);
   }
 
-  const result: SerializableCitation[] = [];
+  const result: DeepDiveableCitation[] = [];
   for (const [href, group] of bySource) {
     const first = group[0];
     const combinedSnippet =
@@ -59,6 +72,10 @@ export function toToolUiCitations(
       ...(author ? { author } : {}),
       ...(publishedAt ? { publishedAt } : {}),
       type: "article",
+      ...(first.metadata.record_id
+        ? { recordId: first.metadata.record_id }
+        : {}),
+      sourceType: first.metadata.source_type,
     });
   }
   return result;
