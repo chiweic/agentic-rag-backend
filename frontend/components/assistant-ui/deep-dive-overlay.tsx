@@ -2,19 +2,11 @@
 
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useLangGraphRuntime } from "@assistant-ui/react-langgraph";
-import { useAui } from "@assistant-ui/store";
-import { SearchIcon, XIcon } from "lucide-react";
-import {
-  createContext,
-  type FC,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { XIcon } from "lucide-react";
+import { type FC, useEffect, useRef, useState } from "react";
 import type { DeepDiveTarget } from "@/components/assistant-ui/deep-dive-provider";
+import { DeepDiveSourceContext } from "@/components/assistant-ui/deep-dive-starters";
 import { Thread } from "@/components/assistant-ui/thread";
-import { Button } from "@/components/ui/button";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -27,18 +19,6 @@ type OverlayProps = {
   target: DeepDiveTarget;
   onClose: () => void;
 };
-
-/**
- * Populated inside the Deep Dive overlay with the fetched source record
- * so nested components (specifically the deep-dive Thread's welcome)
- * can render source-aware starter prompts. `null` means "not in a deep
- * dive" or "source still loading".
- */
-export const DeepDiveSourceContext = createContext<SourceRecord | null>(null);
-
-/** Hook used by `ThreadWelcome` to decide between default and deep-dive starters. */
-export const useDeepDiveSource = (): SourceRecord | null =>
-  useContext(DeepDiveSourceContext);
 
 /**
  * Fullscreen Deep Dive workspace:
@@ -218,89 +198,6 @@ const SourceContentView: FC<{ state: SourceState }> = ({ state }) => {
       </div>
     </div>
   );
-};
-
-/**
- * Source-aware starter prompts rendered in place of the main chat's
- * global StarterSuggestions when the Thread is inside a Deep Dive.
- *
- * Uses the fetched record (via DeepDiveSourceContext) so prompts
- * reference the actual source the user pinned. Falls back to generic
- * prompts if the record hasn't loaded yet — the user may start typing
- * while the source fetch is in flight.
- */
-export const DeepDiveStarters: FC<{ variant?: "start" | "followup" }> = ({
-  variant = "start",
-}) => {
-  const source = useDeepDiveSource();
-  const aui = useAui();
-
-  const prompts = buildDeepDivePrompts(source);
-  const heading = variant === "start" ? "從這些問題開始:" : "繼續探索:";
-
-  return (
-    <div className="w-full">
-      <div className="mb-3 px-1 text-muted-foreground text-sm">{heading}</div>
-      <div className="grid w-full gap-2 pb-4 @md:grid-cols-2">
-        {prompts.map((prompt) => (
-          <Button
-            key={prompt.id}
-            variant="ghost"
-            type="button"
-            className="h-auto w-full flex-col items-start gap-1 rounded-3xl border border-border/70 bg-background/90 px-4 py-4 text-left text-sm shadow-sm transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:bg-muted/40"
-            onClick={() => {
-              if (aui.thread().getState().isRunning) return;
-              const composer = aui.composer();
-              aui.thread().append({
-                content: [{ type: "text", text: prompt.text }],
-                runConfig: composer.getState().runConfig,
-              });
-            }}
-          >
-            <span className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              <SearchIcon className="size-3" />
-              {prompt.label}
-            </span>
-            <span className="text-pretty font-medium text-foreground leading-6">
-              {prompt.text}
-            </span>
-          </Button>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-type DeepDivePrompt = { id: string; label: string; text: string };
-
-const buildDeepDivePrompts = (
-  source: SourceRecord | null,
-): DeepDivePrompt[] => {
-  // Prefer the most specific available handle for natural prose.
-  const handle =
-    source?.chapter_title || source?.title || source?.book_title || "這份來源";
-  return [
-    {
-      id: "summarize",
-      label: "總結",
-      text: `請總結「${handle}」的內容。`,
-    },
-    {
-      id: "main-points",
-      label: "重點",
-      text: `「${handle}」的主要重點是什麼?`,
-    },
-    {
-      id: "critical",
-      label: "關鍵句子",
-      text: `請列出「${handle}」中最重要的句子。`,
-    },
-    {
-      id: "explain",
-      label: "深入淺出",
-      text: `請以更淺顯的方式解釋「${handle}」的核心概念。`,
-    },
-  ];
 };
 
 /**

@@ -30,11 +30,11 @@ import {
   ComposerAttachments,
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
+import { useDeepDive } from "@/components/assistant-ui/deep-dive-provider";
 import {
   DeepDiveStarters,
   useDeepDiveSource,
-} from "@/components/assistant-ui/deep-dive-overlay";
-import { useDeepDive } from "@/components/assistant-ui/deep-dive-provider";
+} from "@/components/assistant-ui/deep-dive-starters";
 import { FollowupSuggestions } from "@/components/assistant-ui/followup-suggestions";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { Reasoning } from "@/components/assistant-ui/reasoning";
