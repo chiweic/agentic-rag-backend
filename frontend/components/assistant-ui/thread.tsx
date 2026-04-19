@@ -225,7 +225,12 @@ const AssistantMessageCitations: FC = () => {
       <div className="mt-4 grid w-full gap-3 @md:grid-cols-2">
         {adapted.map((c) => (
           <div key={c.id} className="flex flex-col gap-1">
-            <ToolUiCitation {...c} variant="default" />
+            {/* Card is display-only — disabling pointer events on the
+                tool-ui Citation suppresses its built-in click/hover so
+                "View Source" below is the single action target. */}
+            <div className="pointer-events-none">
+              <ToolUiCitation {...c} variant="default" />
+            </div>
             <a
               href={c.href}
               target="_blank"
