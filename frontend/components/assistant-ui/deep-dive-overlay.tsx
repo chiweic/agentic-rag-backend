@@ -247,30 +247,27 @@ const buildDeepDivePrompts = (
 ): DeepDivePrompt[] => {
   // Prefer the most specific available handle for natural prose.
   const handle =
-    source?.chapter_title ||
-    source?.title ||
-    source?.book_title ||
-    "this source";
+    source?.chapter_title || source?.title || source?.book_title || "這份來源";
   return [
     {
       id: "summarize",
-      label: "Summarize",
-      text: `Summarize ${handle}.`,
+      label: "總結",
+      text: `請總結「${handle}」的內容。`,
     },
     {
       id: "main-points",
-      label: "Main points",
-      text: `What are the main points of ${handle}?`,
+      label: "重點",
+      text: `「${handle}」的主要重點是什麼?`,
     },
     {
       id: "critical",
-      label: "Critical sentences",
-      text: `Highlight the most important sentences in ${handle}.`,
+      label: "關鍵句子",
+      text: `請列出「${handle}」中最重要的句子。`,
     },
     {
       id: "explain",
-      label: "Simpler terms",
-      text: `Explain the key ideas of ${handle} in simpler terms.`,
+      label: "深入淺出",
+      text: `請以更淺顯的方式解釋「${handle}」的核心概念。`,
     },
   ];
 };
