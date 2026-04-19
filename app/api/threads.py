@@ -372,21 +372,31 @@ async def _stream_events(
         raw_messages = state.values.get("messages", []) if state.values else []
         values_messages = normalize_messages(raw_messages)
 
-        # SSE contract guarantees at least one `messages/partial` and one
-        # `messages/complete` for the final assistant reply. When the
-        # underlying chat model is non-streaming (RAG provider wraps a
-        # single `.invoke` call), `on_chat_model_stream` may not have
-        # fired. Synthesize the pair from the final normalized assistant
-        # message so consumers see a consistent event sequence.
+        # Align the assistant message id across partial/complete/values
+        # events. `messages/partial` streams with `ai_message_id` (our own
+        # uuid) while `normalize_messages` pulls LangChain's
+        # auto-generated AIMessage.id from the checkpointer — different
+        # ids for the same logical message make assistant-ui remount the
+        # component on the values event, replaying the entry animation
+        # (shows up as a visible "refresh" when citations appear).
         if values_messages:
             last = values_messages[-1]
             if last.get("role") == "assistant":
-                final_msg = {
-                    "id": last.get("id") or ai_message_id,
-                    "role": "assistant",
-                    "content": last.get("content", []),
-                }
+                last["id"] = ai_message_id
+
+                # SSE contract guarantees at least one `messages/partial`
+                # and one `messages/complete` for the final assistant
+                # reply. When the underlying chat model is non-streaming
+                # (RAG provider wraps a single `.invoke` call),
+                # `on_chat_model_stream` may not have fired. Synthesize
+                # the pair from the final normalized assistant message so
+                # consumers see a consistent event sequence.
                 if accumulated_content == "":
+                    final_msg = {
+                        "id": ai_message_id,
+                        "role": "assistant",
+                        "content": last.get("content", []),
+                    }
                     yield f"event: messages/partial\ndata: {json.dumps(final_msg)}\n\n"
                     yield f"event: messages/complete\ndata: {json.dumps(final_msg)}\n\n"
 

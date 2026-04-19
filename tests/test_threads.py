@@ -248,6 +248,47 @@ async def test_sse_event_sequence_and_shape(client):
 
 
 @pytest.mark.asyncio
+async def test_assistant_message_id_is_stable_across_sse_events(client):
+    """The assistant message id in `values` must match the id used in
+    `messages/partial` and `messages/complete`.
+
+    If the ids diverge, assistant-ui sees two different messages and
+    remounts the component when `values` arrives — the entry animation
+    replays, producing a visible "refresh" when citations appear under
+    the answer.
+    """
+    import json
+
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={"input": {"messages": [{"role": "user", "content": "hi"}]}},
+    )
+    assert resp.status_code == 200
+
+    events = _parse_sse(resp.text)
+
+    partial_ids = {json.loads(e["data"])["id"] for e in events if e["event"] == "messages/partial"}
+    complete_ids = {
+        json.loads(e["data"])["id"] for e in events if e["event"] == "messages/complete"
+    }
+    values_payload = json.loads(next(e["data"] for e in events if e["event"] == "values"))
+    assistant_in_values = next(
+        m for m in reversed(values_payload["messages"]) if m["role"] == "assistant"
+    )
+
+    assert len(partial_ids) == 1, f"expected one partial id, got {partial_ids}"
+    assert len(complete_ids) == 1, f"expected one complete id, got {complete_ids}"
+    (partial_id,) = partial_ids
+    (complete_id,) = complete_ids
+
+    # All three events reference the same assistant message.
+    assert partial_id == complete_id == assistant_in_values["id"]
+
+
+@pytest.mark.asyncio
 async def test_state_response_shape(client):
     """Pin the GET /threads/{id}/state response shape."""
     resp = await client.post("/threads", json={})
