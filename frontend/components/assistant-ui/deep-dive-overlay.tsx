@@ -84,21 +84,20 @@ export const DeepDiveOverlay: FC<OverlayProps> = ({ target, onClose }) => {
       aria-label="Deep dive"
     >
       <header className="flex items-center gap-3 border-b px-4 py-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-[0.12em]">
-            <span>Deep Dive</span>
-            {sourceRecord?.book_title ? (
-              <>
-                <span aria-hidden="true">·</span>
-                <span className="truncate normal-case tracking-normal">
-                  {sourceRecord.book_title}
-                </span>
-              </>
-            ) : null}
-          </div>
-          <div className="truncate text-sm font-medium">
-            {sourceRecord?.title ?? `${target.sourceType} · ${target.recordId}`}
-          </div>
+        <div className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+          <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-[0.12em]">
+            Deep Dive
+          </span>
+          {/* Prefer book_title as the identifier on the header — the
+              body content typically opens with the chapter/section
+              title itself, so putting chapter up here doubles up.
+              Fall back to the record title for sources (qa, etc.)
+              that don't carry a book_title. */}
+          <span className="truncate font-medium">
+            {sourceRecord?.book_title ??
+              sourceRecord?.title ??
+              `${target.sourceType} · ${target.recordId}`}
+          </span>
         </div>
         {sourceRecord?.source_url ? (
           <a
