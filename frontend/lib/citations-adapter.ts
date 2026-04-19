@@ -44,7 +44,11 @@ export function toToolUiCitations(
         .map((c) => c.text)
         .join("\n\n")
         .slice(0, SNIPPET_CHAR_CAP) || undefined;
-    const domain = deriveDomain(href);
+    // Prefer a book/source reference over the bare URL host — when
+    // available (faguquanji) the book_title is more informative than
+    // "ddc.shengyen.org". Fall back to the URL-derived hostname.
+    const domain = first.metadata.book_title || deriveDomain(href);
+    const author = first.metadata.attribution || undefined;
     const publishedAt = toIsoDatetime(first.metadata.publish_date);
     result.push({
       id: first.chunk_id,
@@ -52,6 +56,7 @@ export function toToolUiCitations(
       title: first.title || "Untitled source",
       ...(combinedSnippet ? { snippet: combinedSnippet } : {}),
       ...(domain ? { domain } : {}),
+      ...(author ? { author } : {}),
       ...(publishedAt ? { publishedAt } : {}),
       type: "article",
     });

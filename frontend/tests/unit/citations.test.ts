@@ -126,6 +126,58 @@ describe("toToolUiCitations", () => {
     expect(out).toEqual([]);
   });
 
+  it("prefers book_title over URL-derived domain when present", () => {
+    const [out] = toToolUiCitations([
+      cite({
+        source_url: "https://ddc.shengyen.org/html/09-04-025.html",
+        metadata: {
+          source_type: "faguquanji",
+          book_title: "聖嚴法師年譜",
+          chapter_title: "第四章",
+        },
+      }),
+    ]);
+    expect(out.domain).toBe("聖嚴法師年譜");
+  });
+
+  it("falls back to URL domain when book_title is absent", () => {
+    const [out] = toToolUiCitations([
+      cite({
+        source_url: "https://www.example.com/page",
+        metadata: { source_type: "qa" },
+      }),
+    ]);
+    expect(out.domain).toBe("example.com");
+  });
+
+  it("surfaces attribution as author when present", () => {
+    const [out] = toToolUiCitations([
+      cite({
+        source_url: "https://ok/1",
+        metadata: { source_type: "qa", attribution: "Some Author" },
+      }),
+    ]);
+    expect(out.author).toBe("Some Author");
+  });
+
+  it("omits author when attribution is missing or empty", () => {
+    const [missing] = toToolUiCitations([
+      cite({
+        source_url: "https://ok/1",
+        metadata: { source_type: "faguquanji" },
+      }),
+    ]);
+    expect(missing.author).toBeUndefined();
+
+    const [empty] = toToolUiCitations([
+      cite({
+        source_url: "https://ok/2",
+        metadata: { source_type: "qa", attribution: "" },
+      }),
+    ]);
+    expect(empty.author).toBeUndefined();
+  });
+
   it("stamps every entry with a stable id and type", () => {
     const out = toToolUiCitations([
       cite({ chunk_id: "c1", source_url: "https://a/1" }),

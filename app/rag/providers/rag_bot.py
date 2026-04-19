@@ -191,6 +191,24 @@ class RagBotService:
 
     @staticmethod
     def _map_hit(hit: "RagBotRetrievalHit") -> RetrievalHit:
+        # Forward human-facing references from the chunk's metadata so the
+        # frontend can display book/chapter/author context on citation
+        # cards. Only non-empty values are forwarded — these fields are
+        # always present as dict keys in rag_bot's schema but are empty
+        # strings for sources that don't populate them (e.g. the qa
+        # collection has no book_title), and an empty "domain override"
+        # is worse than no override at all.
+        chunk_meta = hit.chunk.metadata or {}
+        refs = {
+            key: value
+            for key, value in (
+                ("book_title", chunk_meta.get("book_title")),
+                ("chapter_title", chunk_meta.get("chapter_title")),
+                ("category", chunk_meta.get("category")),
+                ("attribution", chunk_meta.get("attribution")),
+            )
+            if value
+        }
         return RetrievalHit(
             chunk_id=hit.chunk.id,
             text=hit.chunk.text,
@@ -202,6 +220,7 @@ class RagBotService:
                 "record_id": hit.chunk.record_id,
                 "chunk_index": hit.chunk.chunk_index,
                 "publish_date": hit.chunk.publish_date,
+                **refs,
             },
         )
 

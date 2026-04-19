@@ -19,6 +19,13 @@ export type Citation = {
     record_id?: string;
     chunk_index?: number;
     publish_date?: string | null;
+    // Human-facing references forwarded from the rag_bot chunk metadata.
+    // Present when the source populates them (faguquanji has
+    // book_title/chapter_title; qa does not).
+    book_title?: string;
+    chapter_title?: string;
+    category?: string;
+    attribution?: string;
   };
 };
 
