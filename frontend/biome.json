@@ -37,7 +37,9 @@
       "tests/**/*.tsx",
       "*.ts",
       "*.tsx",
-      "*.json"
+      "*.json",
+      "!components/tool-ui",
+      "!components/ui/popover.tsx"
     ]
   }
 }

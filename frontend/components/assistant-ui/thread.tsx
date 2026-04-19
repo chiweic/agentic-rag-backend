@@ -28,15 +28,16 @@ import {
   ComposerAttachments,
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
-import { Citations } from "@/components/assistant-ui/citations";
 import { FollowupSuggestions } from "@/components/assistant-ui/followup-suggestions";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { Reasoning } from "@/components/assistant-ui/reasoning";
 import { StarterSuggestions } from "@/components/assistant-ui/starter-suggestions";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { CitationList } from "@/components/tool-ui/citation";
 import { Button } from "@/components/ui/button";
 import type { Citation } from "@/lib/chatApi";
+import { toToolUiCitations } from "@/lib/citations-adapter";
 import { cn } from "@/lib/utils";
 
 export const Thread: FC = () => {
@@ -216,9 +217,17 @@ const AssistantMessageCitations: FC = () => {
   const isLast = useAuiState((s) => s.message.isLast);
 
   if (!citations?.length) return null;
+  const adapted = toToolUiCitations(citations);
+  if (adapted.length === 0) return null;
   return (
     <>
-      <Citations citations={citations} />
+      <div className="mt-4">
+        <CitationList
+          id="answer-sources"
+          citations={adapted}
+          variant="stacked"
+        />
+      </div>
       {isLast ? <FollowupSuggestions /> : null}
     </>
   );
