@@ -2,7 +2,7 @@
 
 import { useAui } from "@assistant-ui/store";
 import { GraduationCapIcon, SearchIcon } from "lucide-react";
-import { createContext, type FC, useContext } from "react";
+import { createContext, type FC, type ReactNode, useContext } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { SourceRecord } from "@/lib/sources";
@@ -41,7 +41,6 @@ export const DeepDiveStarters: FC<{ variant?: "start" | "followup" }> = ({
   const aui = useAui();
 
   const prompts = buildDeepDivePrompts(source);
-  const exploreHeading = variant === "start" ? "從這些問題開始:" : "繼續探索:";
   const quizPromptText = buildQuizPromptText(source);
 
   const send = (text: string) => {
@@ -53,11 +52,42 @@ export const DeepDiveStarters: FC<{ variant?: "start" | "followup" }> = ({
     });
   };
 
+  // Under-message follow-ups stay visually light — just inline chips
+  // with the primary label ("總結", "重點", ...). Full prompt text is
+  // shipped on click via `send` but not shown in the chip; keeps the
+  // conversation readable while still offering the same actions.
+  if (variant === "followup") {
+    return (
+      <div className="w-full">
+        <div className="mb-2 px-1 text-muted-foreground text-xs uppercase tracking-[0.12em]">
+          繼續探索
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {prompts.map((prompt) => (
+            <Chip
+              key={prompt.id}
+              icon={<SearchIcon className="size-3 text-muted-foreground" />}
+              label={prompt.label}
+              onClick={() => send(prompt.text)}
+            />
+          ))}
+          <Chip
+            icon={
+              <GraduationCapIcon className="size-3 text-muted-foreground" />
+            }
+            label="小測驗"
+            onClick={() => send(quizPromptText)}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full">
       {/* Section 1: open-ended exploration of the pinned source. */}
       <div className="mb-3 px-1 text-muted-foreground text-sm">
-        {exploreHeading}
+        從這些問題開始:
       </div>
       <div className="grid w-full gap-2 pb-4 @md:grid-cols-2">
         {prompts.map((prompt) => (
@@ -98,6 +128,23 @@ export const DeepDiveStarters: FC<{ variant?: "start" | "followup" }> = ({
         </span>
       </Button>
     </div>
+  );
+};
+
+const Chip: FC<{
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}> = ({ icon, label, onClick }) => {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/90 px-3 py-1.5 text-foreground text-xs font-medium shadow-sm transition-all hover:-translate-y-px hover:border-foreground/20 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {icon}
+      {label}
+    </button>
   );
 };
 
