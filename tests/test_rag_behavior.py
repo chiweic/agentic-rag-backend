@@ -104,6 +104,38 @@ async def test_threads_default_source_type_when_metadata_missing(client, fake_ra
 
 
 @pytest.mark.asyncio
+async def test_threads_generate_receives_chat_history(client, fake_rag_service):
+    """The second turn should carry turn 1 (Q + A, text-only) as history."""
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={"input": {"messages": [{"role": "user", "content": "first question"}]}},
+    )
+    await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={"input": {"messages": [{"role": "user", "content": "follow up"}]}},
+    )
+
+    assert len(fake_rag_service.generate_calls) == 2
+
+    # First turn has no prior conversation.
+    first_history = fake_rag_service.generate_calls[0]["history"]
+    assert first_history in (None, [])
+
+    # Second turn carries turn 1 Q + A in order, roles alternating, and
+    # the assistant content is the text block only (no citations leak).
+    second_history = fake_rag_service.generate_calls[1]["history"]
+    assert second_history is not None
+    assert [m["role"] for m in second_history] == ["user", "assistant"]
+    assert second_history[0]["content"] == "first question"
+    assistant_text = second_history[1]["content"]
+    assert fake_rag_service.MARKER in assistant_text
+    assert "FIXTURE_CHUNK_0" not in assistant_text  # citations block not echoed
+
+
+@pytest.mark.asyncio
 async def test_threads_call_counts_per_turn(client, fake_rag_service):
     """Each user turn should trigger exactly one search + one generate."""
     resp = await client.post("/threads", json={})

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 
 from app.agent.state import AgentState
@@ -45,21 +45,61 @@ def _rag_service(config: RunnableConfig) -> "RagService":
     return service
 
 
+def _message_text(msg: BaseMessage) -> str:
+    """Flatten a message's content into plain text.
+
+    Assistant messages carry a list of content blocks (text + citations);
+    only the text blocks belong in history — citations are a rendering
+    concern that would otherwise leak back into the prompt verbatim.
+    """
+    content = msg.content
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(str(block.get("text", "")))
+            elif isinstance(block, str):
+                parts.append(block)
+        return "".join(parts)
+    return str(content) if content else ""
+
+
 def _latest_user_query(state: AgentState) -> str:
     for msg in reversed(state.messages):
         if isinstance(msg, HumanMessage):
-            content = msg.content
-            if isinstance(content, str):
-                return content
-            if isinstance(content, list):
-                # Pick up text blocks from structured content.
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        return str(block.get("text", ""))
-                    if isinstance(block, str):
-                        return block
-            return str(content)
+            return _message_text(msg)
     return ""
+
+
+def _build_history(state: AgentState) -> list[dict[str, str]]:
+    """Prior-turn role/content pairs for `RagService.generate`.
+
+    Excludes the latest HumanMessage (that's the current query, passed
+    separately) and caps the result at `settings.max_message_window` so
+    prompt size stays bounded on long threads.
+    """
+    cutoff = len(state.messages)
+    for i in range(len(state.messages) - 1, -1, -1):
+        if isinstance(state.messages[i], HumanMessage):
+            cutoff = i
+            break
+
+    history: list[dict[str, str]] = []
+    for msg in state.messages[:cutoff]:
+        text = _message_text(msg).strip()
+        if not text:
+            continue
+        if isinstance(msg, HumanMessage):
+            history.append({"role": "user", "content": text})
+        elif isinstance(msg, AIMessage):
+            history.append({"role": "assistant", "content": text})
+
+    window = settings.max_message_window
+    if window and len(history) > window:
+        history = history[-window:]
+    return history
 
 
 # ---------------------------------------------------------------------------
@@ -124,13 +164,19 @@ def generate(state: AgentState, config: RunnableConfig) -> dict:
     if not hits:
         content_text = NO_HITS_MESSAGE
         citations_block: list[dict[str, Any]] = []
+        history: list[dict[str, str]] = []
     else:
-        answer = service.generate(state.query, hits, history=None)
+        history = _build_history(state)
+        answer = service.generate(state.query, hits, history=history or None)
         content_text = answer.text
         citations_block = [c.model_dump(mode="json") for c in answer.citations]
 
+    thread_id = (config.get("configurable") or {}).get("thread_id") or "?"
     log.info(
-        "generate | %d hits | answer=%d chars",
+        "generate | thread=%s | history=%d turns | query=%r | %d hits | answer=%d chars",
+        str(thread_id)[:8],
+        len(history),
+        state.query[:60],
         len(hits),
         len(content_text),
     )

@@ -112,7 +112,7 @@ class RagBotService:
         *,
         history: list[dict[str, str]] | None = None,
     ) -> RagAnswer:
-        from rag_bot.rag.generator import generate_answer
+        from rag_bot.rag.generator import build_rag_prompt, generate_answer
 
         if not hits:
             return RagAnswer(
@@ -124,12 +124,35 @@ class RagBotService:
             )
 
         native_hits = self._lookup_cached_hits(hits) or self._requery(query, hits)
-        generated = generate_answer(
-            question=query,
-            hits=native_hits,
-            chat_model=self._chat_model,
-        )
-        return RagAnswer(text=generated.answer, citations=hits)
+
+        if not history:
+            generated = generate_answer(
+                question=query,
+                hits=native_hits,
+                chat_model=self._chat_model,
+            )
+            return RagAnswer(text=generated.answer, citations=hits)
+
+        # With history, build a messages list so prior turns precede the
+        # grounded question. The current turn still uses build_rag_prompt
+        # so the context-injection format stays identical to rag_bot's.
+        from langchain_core.messages import AIMessage, HumanMessage
+
+        prompt = build_rag_prompt(query, native_hits)
+        messages: list[Any] = []
+        for turn in history:
+            role = turn.get("role")
+            content = str(turn.get("content", "")).strip()
+            if not content:
+                continue
+            if role == "user":
+                messages.append(HumanMessage(content=content))
+            elif role == "assistant":
+                messages.append(AIMessage(content=content))
+        messages.append(HumanMessage(content=prompt))
+
+        response = self._chat_model.invoke(messages)
+        return RagAnswer(text=_response_to_text(response), citations=hits)
 
     # ------------------------------------------------------------------
     # Internals
@@ -181,6 +204,29 @@ class RagBotService:
                 "publish_date": hit.chunk.publish_date,
             },
         )
+
+
+def _response_to_text(response: Any) -> str:
+    """Extract text from a LangChain chat-model response.
+
+    Handles `.text` (string property on modern AIMessage), plain `.content`
+    strings, and Responses-API block content (`[{"type":"text",...}, ...]`).
+    """
+    text_attr = getattr(response, "text", None)
+    if isinstance(text_attr, str):
+        return text_attr
+    content = getattr(response, "content", None)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(str(block.get("text", "")))
+        return "".join(parts)
+    if callable(text_attr):
+        return str(text_attr())
+    return str(response)
 
 
 # Runtime-protocol check — fails loudly if the shape drifts.
