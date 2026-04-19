@@ -17,6 +17,7 @@ import {
   ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
+  ExternalLinkIcon,
   MoreHorizontalIcon,
   PencilIcon,
   RefreshCwIcon,
@@ -34,7 +35,7 @@ import { Reasoning } from "@/components/assistant-ui/reasoning";
 import { StarterSuggestions } from "@/components/assistant-ui/starter-suggestions";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
-import { CitationList } from "@/components/tool-ui/citation";
+import { Citation as ToolUiCitation } from "@/components/tool-ui/citation";
 import { Button } from "@/components/ui/button";
 import type { Citation } from "@/lib/chatApi";
 import { toToolUiCitations } from "@/lib/citations-adapter";
@@ -221,12 +222,21 @@ const AssistantMessageCitations: FC = () => {
   if (adapted.length === 0) return null;
   return (
     <>
-      <div className="mt-4">
-        <CitationList
-          id="answer-sources"
-          citations={adapted}
-          variant="default"
-        />
+      <div className="mt-4 grid w-full gap-3 @md:grid-cols-2">
+        {adapted.map((c) => (
+          <div key={c.id} className="flex flex-col gap-1">
+            <ToolUiCitation {...c} variant="default" />
+            <a
+              href={c.href}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 inline-flex items-center gap-1 self-start rounded-md px-1 text-muted-foreground text-xs hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+              View Source
+              <ExternalLinkIcon className="size-3" />
+            </a>
+          </div>
+        ))}
       </div>
       {isLast ? <FollowupSuggestions /> : null}
     </>
