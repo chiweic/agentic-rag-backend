@@ -71,7 +71,7 @@ Missing metadata falls back to `settings.default_source_type` (currently `faguqu
 
 ## Recommended rendering
 
-For the assistant-ui frontends ([frontend-v2](../frontend-v2/), [mobile-v3](../mobile-v3/)):
+For the assistant-ui frontends ([frontend](../frontend/), [mobile-v3](../mobile-v3/)):
 
 1. **Split blocks.** Iterate `message.content[]`. For `type === "text"` render the markdown body. For `type === "citations"` render a footnote/accordion with the `citations[]` array.
 2. **Deduplicate by `chunk_id`.** The backend doesn't dedupe; multiple chunks from the same document are common.

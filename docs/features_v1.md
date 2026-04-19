@@ -1,4 +1,4 @@
-This is the first milestone on feature work (on top from current baseline frontend-v2)
+This is the first milestone on feature work (on top from current baseline frontend)
 
 1. New thread suggestions: current behavior: show Hello there! How can I help you today? goal is to generate initial suggestion based on entries randomly draw from collection from milvis started rag_bot_qa... (and latestest). Noted, these are question and answer parsed, when we generate suggestion, we should not directly use the query, but rephased with casual style. Noted also backend should cached to avoid constant db query.
 
@@ -123,7 +123,7 @@ This is mostly a frontend change. Backend-side concerns and questions:
   - Skip inline markers for v1; keep source cards under the answer (matches the frontend's "compact accordion" / "always-visible compact cards" options).
   - My recommendation: **skip inline markers for v1**. Matches frontend's target shapes and avoids a prompt-behavior gamble.
 - **OpenAI-compat footer.** If we change the citation block shape, the "Sources:" footer logic at [app/api/openai_compat.py:127-133](../app/api/openai_compat.py#L127-L133) may also need updating. Worth scanning once when we land this.
-- **Breaking change or parallel.** The frontend is the only consumer of the `citations` content block today, so iterating on its shape in-place (rather than adding `citations_v2`) is fine as long as frontend-v2 ships together. Confirm the same assistant-ui contract is used by mobile-v3 before I change field names.
+- **Breaking change or parallel.** The frontend is the only consumer of the `citations` content block today, so iterating on its shape in-place (rather than adding `citations_v2`) is fine as long as frontend ships together. Confirm the same assistant-ui contract is used by mobile-v3 before I change field names.
 
 Open questions for the user:
 - Is this meant to ship to end users, or is it an internal experiment? Affects how carefully we guard backward compatibility.

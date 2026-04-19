@@ -7,11 +7,11 @@ repos:
       - id: ruff-format
   - repo: local
     hooks:
-      - id: biome-check-v2
-        name: biome check (frontend-v2)
-        entry: bash -c 'cd frontend-v2 && npx biome check --fix'
+      - id: biome-check-frontend
+        name: biome check (frontend)
+        entry: bash -c 'cd frontend && npx biome check --fix'
         language: system
-        files: ^frontend-v2/.*\.(ts|tsx|js|json)$
+        files: ^frontend/.*\.(ts|tsx|js|json)$
         pass_filenames: false
       - id: expo-lint-mobile-v3
         name: expo lint (mobile-v3)

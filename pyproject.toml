@@ -39,7 +39,7 @@ rag_bot = []
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
-# Repo root holds sibling dirs (exp/, data/, frontend-v2/, mobile-v3/, etc.).
+# Repo root holds sibling dirs (exp/, data/, frontend/, mobile-v3/, etc.).
 # Scope the package to `app` so setuptools' flat-layout autodiscovery
 # doesn't choke on the siblings.
 [tool.setuptools.packages.find]

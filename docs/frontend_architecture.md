@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the phased frontend architecture for the assistant-ui chat application. The frontend is built fresh in `frontend-v2` — no migration from `frontend-v1`, no legacy code carried over.
+This document describes the phased frontend architecture for the assistant-ui chat application. The current `frontend/` directory is the only frontend; it was originally authored as `frontend-v2/` to replace the legacy `frontend-v1/` (now removed) without migration — no legacy code was carried over.
 
 The backend provides LangGraph-compatible thread endpoints at `/threads`. These remain stable across all phases.
 
@@ -12,12 +12,12 @@ The backend provides LangGraph-compatible thread endpoints at `/threads`. These 
 - **No Vercel AI SDK**: the backend already speaks LangGraph protocol; adding AI SDK would be an extra dependency with no clear job
 - **No Zustand**: the runtime is the state layer — it owns messages, thread switching, streaming status
 - **No AssistantCloud for threads**: backend already has thread persistence in Postgres via LangGraph checkpointer
-- **Fresh codebase**: `frontend-v2` directory, clean start, `frontend-v1` stays as reference
+- **Fresh codebase**: `frontend/` directory, clean start (historical `frontend-v1/` has been removed; no migration path)
 - **Phases 1 and 2 collapse**: since `useLangGraphRuntime` talks directly to our backend, thread persistence is self-hosted from day one. Phase 2 is only the auth swap.
 
-## Current State (`frontend-v1`)
+## Historical State (`frontend-v1`, removed)
 
-The current frontend uses:
+The legacy `frontend-v1/` used:
 
 - `useExternalStoreRuntime` with a custom Zustand store layer
 - `chat-store.ts` (444 lines) — thread/message state, sync logic
@@ -25,13 +25,13 @@ The current frontend uses:
 - `backend-threads.ts` (246 lines) — backend API client for threads
 - `MyRuntimeProvider.tsx` (566 lines) — runtime wiring, message conversion, polling
 
-Total custom runtime code: ~1,400 lines. All of this is replaced by the runtime.
+Total custom runtime code: ~1,400 lines. All of it replaced by `useLangGraphRuntime` in the current `frontend/` codebase. The `frontend-v1/` directory itself was removed on 2026-04-19.
 
 ## Phase 1 — ChatGPT Experience
 
 ### Goal
 
-Ship a multi-user chat experience with threads, thread list, and streaming in `frontend-v2`.
+Ship a multi-user chat experience with threads, thread list, and streaming in `frontend`.
 
 ### Tech Stack
 
@@ -59,7 +59,7 @@ Thread persistence: Postgres (backend LangGraph checkpointer + thread_store.py)
 Auth: Clerk (JWT attached to runtime fetch calls)
 ```
 
-### What Gets Built (`frontend-v2`)
+### What Gets Built (`frontend`)
 
 - Runtime provider (~50 lines) — `useLangGraphRuntime` + `useRemoteThreadListRuntime` config
 - Clerk auth integration — `useAuth` hook, JWT in fetch headers
@@ -97,7 +97,7 @@ Replace Clerk with self-hosted auth. No user-facing UI changes.
 ### Migration Steps
 
 1. Set up Auth.js or Logto OSS (self-hosted OIDC)
-2. Replace Clerk provider/hooks in `frontend-v2` with new auth provider
+2. Replace Clerk provider/hooks in `frontend` with new auth provider
 3. Add new OIDC provider config to backend `app/core/auth.py`
 4. Remove Clerk dependency
 
@@ -192,14 +192,14 @@ Testing Pyramid
 - `biome check .` — lint
 - `vitest run` — unit + integration + component tests
 
-### CI (GitHub Actions on `frontend-v2/**`)
+### CI (GitHub Actions on `frontend/**`)
 
 - Typecheck, lint, test — three parallel jobs
 - E2E not a commit gate until suite is stable
 
 ### Pre-commit Hooks
 
-- Biome check on staged `frontend-v2` files
+- Biome check on staged `frontend` files
 
 ## Timeline Dependencies
 
