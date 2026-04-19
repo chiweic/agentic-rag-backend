@@ -42,3 +42,7 @@ app-example
 /ios
 /android
 .vercel
+
+# Playwright artifacts
+/playwright-report/
+/test-results/
