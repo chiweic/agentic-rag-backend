@@ -225,7 +225,7 @@ const AssistantMessageCitations: FC = () => {
         <CitationList
           id="answer-sources"
           citations={adapted}
-          variant="stacked"
+          variant="default"
         />
       </div>
       {isLast ? <FollowupSuggestions /> : null}
