@@ -5,7 +5,6 @@ import {
   useRemoteThreadListRuntime,
 } from "@assistant-ui/react";
 import { useLangGraphRuntime } from "@assistant-ui/react-langgraph";
-import { useEffect } from "react";
 import { Thread } from "@/components/assistant-ui/thread";
 import { ThreadListSidebar } from "@/components/assistant-ui/thread-list-sidebar";
 import {
@@ -14,6 +13,7 @@ import {
   sendMessage,
   setTokenResolver as setChatApiToken,
 } from "@/lib/chatApi";
+import { clearFollowupSuggestions } from "@/lib/followupSuggestions";
 import {
   setTokenResolver as setAdapterToken,
   threadListAdapter,
@@ -27,12 +27,18 @@ async function fetchAccessToken(): Promise<string | null> {
   return data.accessToken ?? null;
 }
 
+// Install resolvers before the runtime is created so initial thread requests
+// do not race ahead unauthenticated on first render.
+setChatApiToken(fetchAccessToken);
+setAdapterToken(fetchAccessToken);
+
 function useLangGraphRuntimeHook() {
   return useLangGraphRuntime({
     stream: async function* (messages, { initialize, command }) {
       const { externalId } = await initialize();
       if (!externalId) throw new Error("Thread not found");
 
+      clearFollowupSuggestions(externalId);
       yield* sendMessage({
         threadId: externalId,
         messages,
@@ -53,11 +59,6 @@ function useLangGraphRuntimeHook() {
 }
 
 export function Assistant() {
-  useEffect(() => {
-    setChatApiToken(fetchAccessToken);
-    setAdapterToken(fetchAccessToken);
-  }, []);
-
   const runtime = useRemoteThreadListRuntime({
     runtimeHook: useLangGraphRuntimeHook,
     adapter: threadListAdapter,

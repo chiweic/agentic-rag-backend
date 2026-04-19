@@ -7,6 +7,17 @@ export function setTokenResolver(resolver: () => Promise<string | null>) {
   tokenResolver = resolver;
 }
 
+async function fetchAccessTokenFallback(): Promise<string | null> {
+  try {
+    const res = await fetch("/api/auth/token");
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.accessToken ?? null;
+  } catch {
+    return null;
+  }
+}
+
 const getBaseUrl = () =>
   process.env["NEXT_PUBLIC_LANGGRAPH_API_URL"] ||
   new URL("/api", window.location.href).href;
@@ -15,11 +26,11 @@ const authHeaders = async (): Promise<Record<string, string>> => {
   const headers: Record<string, string> = {
     "content-type": "application/json",
   };
-  if (tokenResolver) {
-    const token = await tokenResolver();
-    if (token) {
-      headers["authorization"] = `Bearer ${token}`;
-    }
+  const token = tokenResolver
+    ? await tokenResolver()
+    : await fetchAccessTokenFallback();
+  if (token) {
+    headers["authorization"] = `Bearer ${token}`;
   }
   return headers;
 };
