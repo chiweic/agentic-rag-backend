@@ -185,6 +185,60 @@ async def test_scope_record_id_absent_on_regular_thread(client, fake_rag_service
 
 
 @pytest.mark.asyncio
+async def test_deep_dive_run_omits_citations_block(client, fake_rag_service):
+    """Scoped turns must not emit a citations content block on the
+    assistant message — otherwise the Deep Dive chat renders source
+    cards that would open a Deep Dive inside a Deep Dive."""
+    import json
+
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={
+            "input": {"messages": [{"role": "user", "content": "Summarize this"}]},
+            "metadata": {
+                "scope_record_id": "REC-ABC",
+                "scope_source_type": "faguquanji",
+            },
+        },
+    )
+    assert resp.status_code == 200
+
+    events = _parse_sse(resp.text)
+    values_events = [e for e in events if e["event"] == "values"]
+    assert values_events
+    payload = json.loads(values_events[-1]["data"])
+    assistant = next(m for m in reversed(payload["messages"]) if m["role"] == "assistant")
+    block_types = {b["type"] for b in assistant["content"] if isinstance(b, dict)}
+    # Text only — no citations block.
+    assert block_types == {"text"}
+
+
+@pytest.mark.asyncio
+async def test_regular_run_still_emits_citations_block(client, fake_rag_service):
+    """Sanity check that the suppression is scoped: regular runs still
+    carry the citations block for the main-chat UI."""
+    import json
+
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={"input": {"messages": [{"role": "user", "content": "hi"}]}},
+    )
+    assert resp.status_code == 200
+
+    events = _parse_sse(resp.text)
+    payload = json.loads(next(e["data"] for e in events if e["event"] == "values"))
+    assistant = next(m for m in reversed(payload["messages"]) if m["role"] == "assistant")
+    block_types = {b["type"] for b in assistant["content"] if isinstance(b, dict)}
+    assert block_types == {"text", "citations"}
+
+
+@pytest.mark.asyncio
 async def test_threads_generate_receives_chat_history(client, fake_rag_service):
     """The second turn should carry turn 1 (Q + A, text-only) as history."""
     resp = await client.post("/threads", json={})

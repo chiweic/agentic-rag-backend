@@ -192,7 +192,14 @@ def generate(state: AgentState, config: RunnableConfig) -> dict:
             scope_record_id=state.scope_record_id,
         )
         content_text = answer.text
-        citations_block = [c.model_dump(mode="json") for c in answer.citations]
+        # Deep-dive mode: suppress the citations block. The user is already
+        # pinned to the record via the left pane, so surfacing citation
+        # cards in the chat would let them open a Deep Dive inside a
+        # Deep Dive — which we treat as a loop rather than a feature.
+        if state.scope_record_id:
+            citations_block = []
+        else:
+            citations_block = [c.model_dump(mode="json") for c in answer.citations]
 
     thread_id = (config.get("configurable") or {}).get("thread_id") or "?"
     log.info(
