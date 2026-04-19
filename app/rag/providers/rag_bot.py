@@ -105,6 +105,87 @@ class RagBotService:
         self._cache_hits(protocol_hits, hits)
         return protocol_hits
 
+    def get_record_chunks(
+        self,
+        record_id: str,
+        *,
+        source_type: str,
+    ) -> list[RetrievalHit]:
+        """Pull every chunk for a single record via a Milvus query.
+
+        Bypasses rag_bot's semantic search (which doesn't expose a
+        Milvus filter expression) in favour of a direct
+        `MilvusClient.query(expr="record_id == '...'")` against the
+        same collection the search path resolves.
+        """
+        from pymilvus import MilvusClient
+        from rag_bot.data_sources.manager import collection_name_for
+
+        manifest = self._manager.get_manifest(source_type)
+        collection = collection_name_for(source_type, manifest.version, self._milvus_config)
+
+        client = MilvusClient(
+            uri=f"http://{self._milvus_config.host}:{self._milvus_config.port}",
+            db_name=self._milvus_config.db_name,
+            user=self._milvus_config.user or "",
+            password=self._milvus_config.password or "",
+            token=self._milvus_config.token or "",
+            secure=self._milvus_config.secure,
+            timeout=self._milvus_config.timeout,
+        )
+        # `record_id` is stored as a string scalar; escape naively by
+        # substituting single quotes. record_ids in this corpus don't
+        # contain them but defense-in-depth.
+        safe_id = record_id.replace("'", "''")
+        rows = client.query(
+            collection_name=collection,
+            filter=f"record_id == '{safe_id}'",
+            output_fields=[
+                "text",
+                "chunk_id",
+                "record_id",
+                "source_type",
+                "source_url",
+                "title",
+                "publish_date",
+                "chunk_index",
+                "category",
+                "attribution",
+                "book_title",
+                "chapter_title",
+            ],
+            limit=10000,
+        )
+
+        # Build protocol-level hits directly from the raw rows — we don't
+        # go through rag_bot's RetrievalHit shape because we don't need
+        # its record/citation fields for display-only context.
+        hits: list[RetrievalHit] = []
+        for row in rows:
+            chunk_meta = {
+                "source_type": row.get("source_type") or source_type,
+                "record_id": row.get("record_id"),
+                "chunk_index": int(row.get("chunk_index", 0) or 0),
+                "publish_date": row.get("publish_date") or None,
+            }
+            for key in ("book_title", "chapter_title", "category", "attribution"):
+                value = row.get(key)
+                if value:
+                    chunk_meta[key] = value
+            hits.append(
+                RetrievalHit(
+                    chunk_id=str(row.get("chunk_id") or ""),
+                    text=str(row.get("text") or ""),
+                    title=str(row.get("title") or ""),
+                    source_url=str(row.get("source_url") or "") or None,
+                    score=None,
+                    metadata=chunk_meta,
+                )
+            )
+
+        hits.sort(key=lambda h: int(h.metadata.get("chunk_index", 0) or 0))
+        return hits
+
     def generate(
         self,
         query: str,

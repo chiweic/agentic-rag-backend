@@ -48,6 +48,22 @@ class RagService(Protocol):
         """Retrieve relevant hits for the query."""
         ...
 
+    def get_record_chunks(
+        self,
+        record_id: str,
+        *,
+        source_type: str,
+    ) -> list[RetrievalHit]:
+        """Return all chunks belonging to a single source record.
+
+        Used by the deep-dive flow to pin a whole source as retrieval
+        context (vs. semantic search across the whole corpus) and by the
+        `GET /sources/{source_type}/{record_id}` endpoint. Chunks are
+        returned in `chunk_index` order so callers can concatenate them
+        for display.
+        """
+        ...
+
     def generate(
         self,
         query: str,

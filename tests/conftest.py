@@ -38,6 +38,7 @@ class FakeRagService:
     def __init__(self) -> None:
         self.search_calls: list[dict] = []
         self.generate_calls: list[dict] = []
+        self.record_chunks_calls: list[dict] = []
 
     def search(
         self,
@@ -64,6 +65,29 @@ class FakeRagService:
                 score=0.8,
                 metadata={"source_type": source_type or "faguquanji"},
             ),
+        ]
+
+    def get_record_chunks(
+        self,
+        record_id: str,
+        *,
+        source_type: str,
+    ) -> list[RetrievalHit]:
+        self.record_chunks_calls.append({"record_id": record_id, "source_type": source_type})
+        return [
+            RetrievalHit(
+                chunk_id=f"FIXTURE_RECORD_CHUNK_{idx}",
+                text=f"record chunk {idx}",
+                title="FIXTURE_RECORD_TITLE",
+                source_url=f"https://example.test/{record_id}",
+                score=None,
+                metadata={
+                    "source_type": source_type,
+                    "record_id": record_id,
+                    "chunk_index": idx,
+                },
+            )
+            for idx in range(2)
         ]
 
     def generate(

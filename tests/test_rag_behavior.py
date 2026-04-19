@@ -104,6 +104,50 @@ async def test_threads_default_source_type_when_metadata_missing(client, fake_ra
 
 
 @pytest.mark.asyncio
+async def test_threads_scoped_retrieval_uses_get_record_chunks(client, fake_rag_service):
+    """When metadata.scope_record_id + scope_source_type are set, retrieve
+    pulls every chunk for that record instead of running a semantic search."""
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={
+            "input": {"messages": [{"role": "user", "content": "Tell me more"}]},
+            "metadata": {
+                "scope_record_id": "REC-123",
+                "scope_source_type": "faguquanji",
+            },
+        },
+    )
+    assert resp.status_code == 200
+
+    # The scoped path was taken — get_record_chunks fired, search did not.
+    assert len(fake_rag_service.record_chunks_calls) == 1
+    assert fake_rag_service.record_chunks_calls[0] == {
+        "record_id": "REC-123",
+        "source_type": "faguquanji",
+    }
+    assert fake_rag_service.search_calls == []
+
+
+@pytest.mark.asyncio
+async def test_threads_without_scope_uses_semantic_search(client, fake_rag_service):
+    """Without scope metadata, retrieve continues to use semantic search."""
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={"input": {"messages": [{"role": "user", "content": "anything"}]}},
+    )
+    assert resp.status_code == 200
+
+    assert len(fake_rag_service.search_calls) == 1
+    assert fake_rag_service.record_chunks_calls == []
+
+
+@pytest.mark.asyncio
 async def test_threads_generate_receives_chat_history(client, fake_rag_service):
     """The second turn should carry turn 1 (Q + A, text-only) as history."""
     resp = await client.post("/threads", json={})

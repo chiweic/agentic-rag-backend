@@ -266,8 +266,12 @@ async def run_stream(
     )
 
     source_type = None
+    scope_record_id = None
+    scope_source_type = None
     if request.metadata and isinstance(request.metadata, dict):
         source_type = request.metadata.get("source_type")
+        scope_record_id = request.metadata.get("scope_record_id")
+        scope_source_type = request.metadata.get("scope_source_type")
 
     from app.rag import current_rag_service
 
@@ -281,7 +285,14 @@ async def run_stream(
     }
 
     return StreamingResponse(
-        _stream_events(input_messages, config, request.command, source_type=source_type),
+        _stream_events(
+            input_messages,
+            config,
+            request.command,
+            source_type=source_type,
+            scope_record_id=scope_record_id,
+            scope_source_type=scope_source_type,
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -315,6 +326,8 @@ async def _stream_events(
     command: dict | None,
     *,
     source_type: str | None = None,
+    scope_record_id: str | None = None,
+    scope_source_type: str | None = None,
 ):
     """Stream in normalized SSE format.
 
@@ -333,6 +346,10 @@ async def _stream_events(
         invoke_input: dict | None = {"messages": input_messages}
         if source_type:
             invoke_input["source_type"] = source_type
+        if scope_record_id:
+            invoke_input["scope_record_id"] = scope_record_id
+        if scope_source_type:
+            invoke_input["scope_source_type"] = scope_source_type
     else:
         invoke_input = None
 

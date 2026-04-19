@@ -23,6 +23,11 @@ class AgentState(BaseModel):
     # RAG fields (populated by the retrieve node)
     query: str = ""
     source_type: str | None = None
+    # Deep-dive scope: when both are set, the retrieve node pulls every
+    # chunk from this record instead of running semantic search — pinning
+    # the whole source as context for a focused conversation.
+    scope_record_id: str | None = None
+    scope_source_type: str | None = None
     retrieval_context: list[str] = Field(default_factory=list)
     retrieved_chunk_ids: list[str] = Field(default_factory=list)
     citations: list[dict[str, Any]] = Field(default_factory=list)

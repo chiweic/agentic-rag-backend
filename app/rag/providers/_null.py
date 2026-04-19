@@ -23,6 +23,14 @@ class NullRagService:
     ) -> list[RetrievalHit]:
         return []
 
+    def get_record_chunks(
+        self,
+        record_id: str,
+        *,
+        source_type: str,
+    ) -> list[RetrievalHit]:
+        return []
+
     def generate(
         self,
         query: str,

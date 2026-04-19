@@ -106,7 +106,12 @@ def _build_history(state: AgentState) -> list[dict[str, str]]:
 # Node: retrieve — fetch grounding hits for the latest user query
 # ---------------------------------------------------------------------------
 def retrieve(state: AgentState, config: RunnableConfig) -> dict:
-    """Run the injected RagService.search and populate retrieval state."""
+    """Run the injected RagService.search and populate retrieval state.
+
+    Deep-dive scope: when `state.scope_record_id` + `scope_source_type`
+    are set, retrieval bypasses semantic search and pulls every chunk
+    from that record instead, pinning the whole source as context.
+    """
     query = _latest_user_query(state)
     if not query:
         return {
@@ -116,22 +121,35 @@ def retrieve(state: AgentState, config: RunnableConfig) -> dict:
             "citations": [],
         }
 
-    source_type = state.source_type or settings.default_source_type
     service = _rag_service(config)
-    hits = service.search(query, source_type=source_type, limit=settings.retrieval_limit)
+    source_type = state.source_type or settings.default_source_type
 
-    rerank_marker = (
-        f" | rerank={settings.rerank_candidate_k}->{settings.rerank_top_n}"
-        if settings.rerank_enabled
-        else ""
-    )
-    log.info(
-        "retrieve | source=%s | query=%r | %d hits%s",
-        source_type,
-        query[:60],
-        len(hits),
-        rerank_marker,
-    )
+    if state.scope_record_id and state.scope_source_type:
+        hits = service.get_record_chunks(
+            state.scope_record_id,
+            source_type=state.scope_source_type,
+        )
+        log.info(
+            "retrieve | scoped | source=%s | record_id=%s | query=%r | %d chunks",
+            state.scope_source_type,
+            state.scope_record_id,
+            query[:60],
+            len(hits),
+        )
+    else:
+        hits = service.search(query, source_type=source_type, limit=settings.retrieval_limit)
+        rerank_marker = (
+            f" | rerank={settings.rerank_candidate_k}->{settings.rerank_top_n}"
+            if settings.rerank_enabled
+            else ""
+        )
+        log.info(
+            "retrieve | source=%s | query=%r | %d hits%s",
+            source_type,
+            query[:60],
+            len(hits),
+            rerank_marker,
+        )
 
     return {
         "query": query,
