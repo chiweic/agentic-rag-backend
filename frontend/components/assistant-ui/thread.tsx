@@ -236,6 +236,21 @@ const AssistantMessageCitations: FC = () => {
     (s) => s.threadListItem.externalId ?? s.threadListItem.remoteId ?? null,
   );
   const deepDive = useDeepDive();
+  const deepDiveSource = useDeepDiveSource();
+  const isDeepDive = deepDiveSource !== null;
+
+  // Deep-dive mode: backend suppresses citations to avoid Deep-Dive-in-
+  // Deep-Dive loops, so the normal citation/follow-up render path is
+  // inert. Instead, re-render the 4 source-aware starter prompts under
+  // the latest assistant turn so the user can ratchet through common
+  // exploration questions without retyping.
+  if (isDeepDive) {
+    return isLast ? (
+      <div className="mt-4">
+        <DeepDiveStarters variant="followup" />
+      </div>
+    ) : null;
+  }
 
   if (!citations?.length) return null;
   const adapted = toToolUiCitations(citations);

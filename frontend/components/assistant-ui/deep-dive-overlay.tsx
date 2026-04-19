@@ -199,17 +199,18 @@ const SourceContentView: FC<{ state: SourceState }> = ({ state }) => {
  * prompts if the record hasn't loaded yet — the user may start typing
  * while the source fetch is in flight.
  */
-export const DeepDiveStarters: FC = () => {
+export const DeepDiveStarters: FC<{ variant?: "start" | "followup" }> = ({
+  variant = "start",
+}) => {
   const source = useDeepDiveSource();
   const aui = useAui();
 
   const prompts = buildDeepDivePrompts(source);
+  const heading = variant === "start" ? "從這些問題開始:" : "繼續探索:";
 
   return (
     <div className="w-full">
-      <div className="mb-3 px-1 text-muted-foreground text-sm">
-        Try one of these to start your Deep Dive
-      </div>
+      <div className="mb-3 px-1 text-muted-foreground text-sm">{heading}</div>
       <div className="grid w-full gap-2 pb-4 @md:grid-cols-2">
         {prompts.map((prompt) => (
           <Button
