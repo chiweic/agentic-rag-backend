@@ -13,11 +13,13 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import uuid
 from typing import TYPE_CHECKING
 
+from app.core.config import settings
 from app.core.logging import get_logger
 
 if TYPE_CHECKING:
@@ -44,6 +46,60 @@ ON thread_metadata (user_id, created_at DESC);
 # Module-level backend — set once during startup
 _conn: AsyncConnection | None = None
 _memory: dict[str, dict] | None = None
+
+# Guards reopen so concurrent CRUD calls only reconnect once when the
+# shared Postgres connection goes stale (timeout, server restart).
+_reopen_lock: asyncio.Lock | None = None
+
+
+async def _ensure_connection() -> AsyncConnection:
+    """Return the live Postgres connection, reopening if it was closed.
+
+    The shared single-connection pattern can drop in production when the
+    server disconnects idle sessions. Rather than crashing the request,
+    we reopen once — guarded by a lock so N concurrent callers produce
+    exactly one reconnect, not N.
+    """
+    global _conn, _reopen_lock
+
+    if _conn is None:
+        raise RuntimeError("Thread store not initialised — call init_store() first")
+
+    if not getattr(_conn, "closed", False):
+        return _conn
+
+    if not settings.postgres_uri:
+        raise RuntimeError(
+            "Thread store connection is closed and POSTGRES_URI is unset — " "cannot reopen"
+        )
+
+    if _reopen_lock is None:
+        _reopen_lock = asyncio.Lock()
+
+    async with _reopen_lock:
+        # Re-check under the lock — another coroutine may have already
+        # reopened while we were waiting.
+        if _conn is not None and not getattr(_conn, "closed", False):
+            return _conn
+
+        from psycopg import AsyncConnection as _AsyncConnection
+
+        log.warning("Thread store connection was closed; reopening Postgres connection")
+        _conn = await _AsyncConnection.connect(settings.postgres_uri, autocommit=False)
+        return _conn
+
+
+async def close_store() -> None:
+    """Close the active Postgres connection. Safe to call multiple times.
+
+    Lifespan calls this on shutdown. Goes through the module-level `_conn`
+    so it closes whatever connection `_ensure_connection` reopened, not
+    the one originally handed to `init_store`.
+    """
+    global _conn
+    if _conn is not None and not getattr(_conn, "closed", False):
+        await _conn.close()
+    _conn = None
 
 
 async def init_store(conn: AsyncConnection | None = None) -> list[str]:
@@ -116,14 +172,15 @@ async def create_thread(user_id: str, metadata: dict | None = None) -> dict:
     if _is_memory():
         _memory[thread_id] = record.copy()
     else:
-        async with _conn.cursor() as cur:
+        conn = await _ensure_connection()
+        async with conn.cursor() as cur:
             await cur.execute(
                 "INSERT INTO thread_metadata"
                 " (thread_id, user_id, title, created_at, is_archived, metadata)"
                 " VALUES (%s, %s, %s, %s, %s, %s)",
                 (thread_id, user_id, None, created_at, False, json.dumps(meta)),
             )
-        await _conn.commit()
+        await conn.commit()
 
     log.info("Thread created: %s for user: %s", thread_id, user_id)
     return record
@@ -136,7 +193,8 @@ async def get_thread(thread_id: str) -> dict | None:
         rec = _memory.get(thread_id)
         return rec.copy() if rec else None
 
-    async with _conn.cursor() as cur:
+    conn = await _ensure_connection()
+    async with conn.cursor() as cur:
         await cur.execute(
             "SELECT thread_id, user_id, title, created_at, is_archived, metadata "
             "FROM thread_metadata WHERE thread_id = %s",
@@ -175,7 +233,8 @@ async def list_threads(user_id: str, include_archived: bool = False) -> list[dic
         query += " AND is_archived = FALSE"
     query += " ORDER BY created_at DESC"
 
-    async with _conn.cursor() as cur:
+    conn = await _ensure_connection()
+    async with conn.cursor() as cur:
         await cur.execute(query, (user_id,))
         rows = await cur.fetchall()
 
@@ -240,10 +299,11 @@ async def update_thread(
         query += " AND user_id = %s"
         params.append(user_id)
 
-    async with _conn.cursor() as cur:
+    conn = await _ensure_connection()
+    async with conn.cursor() as cur:
         await cur.execute(query, params)
         updated = cur.rowcount > 0
-    await _conn.commit()
+    await conn.commit()
 
     if not updated:
         return None
@@ -272,10 +332,11 @@ async def delete_thread(thread_id: str, *, user_id: str | None = None) -> bool:
         query += " AND user_id = %s"
         params.append(user_id)
 
-    async with _conn.cursor() as cur:
+    conn = await _ensure_connection()
+    async with conn.cursor() as cur:
         await cur.execute(query, params)
         deleted = cur.rowcount > 0
-    await _conn.commit()
+    await conn.commit()
 
     if deleted:
         log.info("Thread deleted: %s", thread_id)

@@ -21,7 +21,7 @@ from app.core.tracing import shutdown_langfuse  # noqa: E402
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from app.core.thread_store import init_store
+    from app.core.thread_store import close_store, init_store
     from app.rag import build_rag_service, set_rag_service
 
     init_providers()
@@ -72,7 +72,10 @@ async def lifespan(app: FastAPI):
             try:
                 yield
             finally:
-                await conn.close()
+                # Route shutdown through the store so we close whatever
+                # connection it's currently holding (may have been reopened
+                # after a dropped session) instead of the original handle.
+                await close_store()
     else:
         # CI / test: in-memory backends (no Postgres required)
         from langgraph.checkpoint.memory import MemorySaver
