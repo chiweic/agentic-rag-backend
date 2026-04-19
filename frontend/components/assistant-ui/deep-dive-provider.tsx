@@ -6,6 +6,7 @@ import {
   type PropsWithChildren,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -39,11 +40,36 @@ const DeepDiveContext = createContext<DeepDiveContextValue | null>(null);
 export const DeepDiveProvider: FC<PropsWithChildren> = ({ children }) => {
   const [current, setCurrent] = useState<DeepDiveTarget | null>(null);
 
+  // History is managed here (imperatively in open/close) rather than in
+  // the overlay's useEffect, because StrictMode double-invokes effects:
+  // a cleanup that calls `history.back()` queues a popstate that the
+  // remounted listener then catches as "user pressed Back", which
+  // flicker-closes the overlay the moment it opens.
   const open = useCallback((target: DeepDiveTarget) => {
+    if (typeof window !== "undefined") {
+      window.history.pushState({ deepDive: true }, "");
+    }
     setCurrent(target);
   }, []);
+
   const close = useCallback(() => {
-    setCurrent(null);
+    // Route close through the browser's back stack so the ✕ button, Esc
+    // key, and the browser's Back button all converge on one code path
+    // (popstate → setCurrent(null)). Without this, clicking ✕ would leave
+    // an orphan history entry that pressing Back later would walk into.
+    if (typeof window !== "undefined" && window.history.state?.deepDive) {
+      window.history.back();
+    } else {
+      setCurrent(null);
+    }
+  }, []);
+
+  // Global popstate listener — also triggered by our own history.back()
+  // call in close(). Closing via setCurrent(null) here is idempotent.
+  useEffect(() => {
+    const onPop = () => setCurrent(null);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
   const value = useMemo(

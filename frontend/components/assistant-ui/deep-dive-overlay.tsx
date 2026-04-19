@@ -3,7 +3,7 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useLangGraphRuntime } from "@assistant-ui/react-langgraph";
 import { XIcon } from "lucide-react";
-import { type FC, useEffect, useRef, useState } from "react";
+import { type FC, useEffect, useState } from "react";
 import type { DeepDiveTarget } from "@/components/assistant-ui/deep-dive-provider";
 import { DeepDiveSourceContext } from "@/components/assistant-ui/deep-dive-starters";
 import { Thread } from "@/components/assistant-ui/thread";
@@ -63,6 +63,9 @@ export const DeepDiveOverlay: FC<OverlayProps> = ({ target, onClose }) => {
     };
   }, [target.recordId, target.sourceType]);
 
+  // Esc triggers the provider's close (which routes through browser
+  // history so Back button and Esc behave identically — see
+  // DeepDiveProvider).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -70,29 +73,6 @@ export const DeepDiveOverlay: FC<OverlayProps> = ({ target, onClose }) => {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-
-  // Tie the overlay to one browser-history entry: pressing Back should
-  // close the Deep Dive instead of leaving the user on a blank page (the
-  // overlay isn't a route; the underlying app has nowhere to navigate
-  // back to on its own). We push one entry on mount, close on popstate
-  // (Back / Forward), and pop our entry in cleanup when the overlay
-  // unmounts via any other path (✕ button, Esc, target change).
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  useEffect(() => {
-    window.history.pushState({ deepDive: true }, "");
-    const onPop = () => onCloseRef.current();
-    window.addEventListener("popstate", onPop);
-    return () => {
-      window.removeEventListener("popstate", onPop);
-      // If we're still on our pushed entry, pop it so history stays
-      // balanced. If the browser already popped it (popstate path),
-      // history.state is no longer ours and we skip.
-      if (window.history.state?.deepDive) {
-        window.history.back();
-      }
-    };
-  }, []);
 
   const sourceRecord = state.status === "ready" ? state.record : null;
 
