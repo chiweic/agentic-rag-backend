@@ -67,16 +67,21 @@ export function Assistant() {
     adapter: threadListAdapter,
   });
 
+  // DeepDiveProvider wraps the main AssistantRuntimeProvider so the
+  // overlay's own AssistantRuntimeProvider (rendered via portal from
+  // inside DeepDiveProvider) is NOT a descendant of the main runtime.
+  // Otherwise the inner Thread reads thread-list state from the outer
+  // runtime and shows the main chat's messages in the deep-dive pane.
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
-      <DeepDiveProvider>
+    <DeepDiveProvider>
+      <AssistantRuntimeProvider runtime={runtime}>
         <div className="flex h-full">
           <ThreadListSidebar />
           <div className="flex-1">
             <Thread />
           </div>
         </div>
-      </DeepDiveProvider>
-    </AssistantRuntimeProvider>
+      </AssistantRuntimeProvider>
+    </DeepDiveProvider>
   );
 }
