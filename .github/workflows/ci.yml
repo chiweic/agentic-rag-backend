@@ -24,14 +24,16 @@ jobs:
       - run: ruff check app/ tests/
       - run: ruff format --check app/ tests/
 
-  # test:
-  #   disabled — tests require local LLM endpoint (area51r5:8003)
-  #   re-enable when a CI-accessible LLM or mock is available
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-python@v5
-  #       with:
-  #         python-version: "3.12"
-  #     - run: pip install -e ".[dev]"
-  #     - run: pytest
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      # Tests use FakeRagService + local fakes for Milvus/LLM — no external
+      # services needed. `rag_bot` is a sibling-repo editable install and is
+      # not required: provider imports are lazy and only fire when
+      # build_rag_service(...) runs, which conftest bypasses via set_rag_service.
+      - run: pytest

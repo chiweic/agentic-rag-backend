@@ -254,15 +254,51 @@ async def test_followup_failure_does_not_break_stream(client):
 # Admin refresh endpoint (gated on AUTH_DEV_MODE=true at app startup)
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
-async def test_admin_refresh_triggers_rebuild(client):
-    """When dev-mode is on, POST /admin/suggestions/refresh rebuilds the pool.
+async def test_admin_refresh_triggers_rebuild():
+    """`_include_routers` mounts the admin refresh endpoint when dev-mode is
+    on; POSTing to it kicks off a pool rebuild.
 
-    Test env runs with AUTH_DEV_MODE=true so the admin router is mounted.
-    The negative case (dev-mode off → 404) is covered by the parallel
-    auth_dev test pattern; repeating it here would need a fresh app.
+    Built against a fresh FastAPI + explicit Settings rather than the shared
+    test client so the assertion holds regardless of the developer/CI env's
+    AUTH_DEV_MODE value (tests should not depend on `.env`).
     """
-    resp = await client.post("/admin/suggestions/refresh")
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from app.core.config import Settings
+    from app.main import _include_routers
+
+    fresh_app = FastAPI()
+    _include_routers(fresh_app, Settings(auth_dev_mode=True))
+
+    fake_pool = StarterSuggestionsPool(
+        settings=Settings(auth_dev_mode=True),
+        title_source=lambda: ["q"],
+        rephraser=lambda ts: list(ts),
+    )
+    await fake_pool.build()
+    fresh_app.state.starter_pool = fake_pool
+
+    transport = ASGITransport(app=fresh_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.post("/admin/suggestions/refresh")
+
     assert resp.status_code == 200
     body = resp.json()
     assert body["triggered"] is True
     assert "prior_status" in body
+
+
+@pytest.mark.asyncio
+async def test_admin_refresh_not_mounted_without_dev_mode():
+    """The admin router must NOT mount when AUTH_DEV_MODE is off."""
+    from fastapi import FastAPI
+
+    from app.core.config import Settings
+    from app.main import _include_routers
+
+    fresh_app = FastAPI()
+    _include_routers(fresh_app, Settings(auth_dev_mode=False))
+
+    paths = {route.path for route in fresh_app.routes}
+    assert "/admin/suggestions/refresh" not in paths
