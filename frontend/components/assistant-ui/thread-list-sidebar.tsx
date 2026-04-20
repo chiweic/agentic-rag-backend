@@ -25,7 +25,7 @@ export const ThreadListSidebar: FC = () => {
         <ThreadListPrimitive.New asChild>
           <Button className="w-full justify-start gap-2" variant="outline">
             <MessageSquarePlusIcon className="size-4" />
-            新對話
+            新一輪對話
           </Button>
         </ThreadListPrimitive.New>
       </div>
