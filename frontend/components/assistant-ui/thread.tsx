@@ -117,9 +117,7 @@ const ThreadWelcome: FC = () => {
             {isDeepDive ? "探索這份來源。" : "今天想問什麼？"}
           </h1>
           <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-muted-foreground text-lg delay-75 duration-200">
-            {isDeepDive
-              ? "可針對左側來源內容提出任何問題。"
-              : "挑一個建議問題,或自行提問。"}
+            {isDeepDive ? "可針對左側來源內容提出任何問題。" : "帶點禪味的 AI"}
           </p>
         </div>
       </div>
