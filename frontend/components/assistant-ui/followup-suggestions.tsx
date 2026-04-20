@@ -19,7 +19,7 @@ export const FollowupSuggestions: FC = () => {
     <div className="mt-4 rounded-3xl border border-border/70 bg-muted/25 p-4">
       <div className="mb-3 flex items-center gap-2 text-muted-foreground text-sm">
         <SparklesIcon className="size-4" />
-        Suggested follow-ups
+        建議延伸問題
       </div>
       <div className="flex flex-wrap gap-2">
         {suggestions.map((suggestion) => (

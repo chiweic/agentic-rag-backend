@@ -18,14 +18,14 @@ export const ThreadListSidebar: FC = () => {
   return (
     <aside className="flex h-full w-72 shrink-0 flex-col border-r bg-muted/20">
       <div className="flex items-center justify-between border-b px-4 py-4">
-        <div className="text-sm font-semibold">Threads</div>
+        <div className="text-sm font-semibold">法鼓山AI專案演示</div>
       </div>
 
       <div className="p-3">
         <ThreadListPrimitive.New asChild>
           <Button className="w-full justify-start gap-2" variant="outline">
             <MessageSquarePlusIcon className="size-4" />
-            New Thread
+            新對話
           </Button>
         </ThreadListPrimitive.New>
       </div>
@@ -49,7 +49,7 @@ export const ThreadListSidebar: FC = () => {
           className="flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <LogOutIcon className="size-4" />
-          Sign out
+          登出
         </a>
       </div>
     </aside>
@@ -67,12 +67,12 @@ const ThreadListItem: FC = () => {
 
       <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         <ThreadListItemPrimitive.Archive asChild>
-          <TooltipIconButton tooltip="Archive">
+          <TooltipIconButton tooltip="封存">
             <ArchiveIcon />
           </TooltipIconButton>
         </ThreadListItemPrimitive.Archive>
         <ThreadListItemPrimitive.Delete asChild>
-          <TooltipIconButton tooltip="Delete">
+          <TooltipIconButton tooltip="刪除">
             <Trash2Icon />
           </TooltipIconButton>
         </ThreadListItemPrimitive.Delete>

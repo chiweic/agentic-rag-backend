@@ -21,16 +21,10 @@ type StarterSuggestionsState = {
 };
 
 const FALLBACK_SUGGESTIONS: StarterSuggestion[] = [
-  {
-    id: "fallback-1",
-    text: "Give me a thoughtful overview of today's topics.",
-  },
-  { id: "fallback-2", text: "Help me find something interesting to explore." },
-  { id: "fallback-3", text: "Recommend a question I should ask first." },
-  {
-    id: "fallback-4",
-    text: "Show me a grounded example from the knowledge base.",
-  },
+  { id: "fallback-1", text: "請給我今日主題的深度概覽。" },
+  { id: "fallback-2", text: "推薦我一個值得探索的主題。" },
+  { id: "fallback-3", text: "建議我從哪個問題開始。" },
+  { id: "fallback-4", text: "從知識庫中給我一個有依據的範例。" },
 ];
 
 // Retry while the backend pool is still warming up on first boot. Backend
@@ -183,9 +177,7 @@ export const StarterSuggestions: FC = () => {
     return (
       <div className="w-full">
         <div className="mb-3 px-1 text-muted-foreground text-sm">
-          {status === "warming_up"
-            ? "Starter suggestions are warming up..."
-            : "Loading starter suggestions..."}
+          {status === "warming_up" ? "建議預備中…" : "載入建議中…"}
         </div>
         <StarterSuggestionSkeleton />
       </div>
@@ -198,7 +190,7 @@ export const StarterSuggestions: FC = () => {
     <div className="w-full">
       <div className="mb-3 flex items-center gap-2 px-1 text-muted-foreground text-sm">
         <SparklesIcon className="size-4" />
-        Try one of these to get started
+        試試以下問題
       </div>
       <div className={cn("grid w-full gap-2 pb-4", "@md:grid-cols-2")}>
         {suggestions.map((suggestion) => (
