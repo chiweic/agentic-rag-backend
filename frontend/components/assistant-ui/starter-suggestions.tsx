@@ -175,8 +175,8 @@ export const StarterSuggestions: FC = () => {
 
   if (status === "loading" || status === "warming_up") {
     return (
-      <div className="w-full">
-        <div className="mb-3 px-1 text-muted-foreground text-sm">
+      <div className="w-full px-4">
+        <div className="mb-3 text-muted-foreground text-sm">
           {status === "warming_up" ? "建議預備中…" : "載入建議中…"}
         </div>
         <StarterSuggestionSkeleton />
@@ -187,8 +187,8 @@ export const StarterSuggestions: FC = () => {
   if (suggestions.length === 0) return null;
 
   return (
-    <div className="w-full">
-      <div className="mb-3 flex items-center gap-2 px-1 text-muted-foreground text-sm">
+    <div className="w-full px-4">
+      <div className="mb-3 flex items-center gap-2 text-muted-foreground text-sm">
         <SparklesIcon className="size-4" />
         試試以下問題
       </div>

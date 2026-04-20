@@ -74,11 +74,9 @@ export const DeepDiveStarters: FC<{ variant?: "start" | "followup" }> = ({
   };
 
   return (
-    <div className="w-full">
+    <div className={variant === "start" ? "w-full px-4" : "w-full"}>
       {/* Section 1: open-ended exploration of the pinned source. */}
-      <div className="mb-3 px-1 text-muted-foreground text-sm">
-        {exploreHeading}
-      </div>
+      <div className="mb-3 text-muted-foreground text-sm">{exploreHeading}</div>
       <div className="flex w-full flex-wrap gap-2 pb-4">
         {prompts.map((prompt) => {
           const Icon = prompt.icon;
