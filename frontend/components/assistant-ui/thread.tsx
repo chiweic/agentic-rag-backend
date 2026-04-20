@@ -9,6 +9,7 @@ import {
   ThreadPrimitive,
   useAuiState,
 } from "@assistant-ui/react";
+import { useAui } from "@assistant-ui/store";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -297,6 +298,71 @@ const AssistantMessageCitations: FC = () => {
   );
 };
 
+/**
+ * Replays the last user message as a new turn.
+ *
+ * Assistant-UI's `ActionBarPrimitive.Reload` requires checkpoint-fork
+ * support on the runtime (via `getCheckpointId`), which in turn needs a
+ * backend `checkpoint_id` passthrough and a way to resolve it. Until
+ * that lands, this custom button does a simple "ask the same question
+ * again" — appends a fresh user turn with the text from the nearest
+ * preceding user message. Shows a duplicate user turn in the
+ * transcript instead of branching, which is the accepted tradeoff.
+ *
+ * Carries over the composer's runConfig so Deep Dive scope metadata
+ * (`scope_record_id` etc.) survives the replay.
+ */
+const RefreshReplayButton: FC = () => {
+  const aui = useAui();
+  const messageId = useAuiState((s) => s.message.id);
+
+  const handleClick = () => {
+    const thread = aui.thread();
+    const state = thread.getState();
+    if (state.isRunning) return;
+
+    const messages = state.messages;
+    const currentIdx = messages.findIndex((m) => m.id === messageId);
+    if (currentIdx < 0) return;
+
+    for (let i = currentIdx - 1; i >= 0; i--) {
+      const candidate = messages[i];
+      if (candidate.role !== "user") continue;
+      const text = extractUserText(candidate.content);
+      if (!text) return;
+      thread.append({
+        content: [{ type: "text", text }],
+        runConfig: aui.composer().getState().runConfig,
+      });
+      return;
+    }
+  };
+
+  return (
+    <TooltipIconButton tooltip="Refresh" onClick={handleClick}>
+      <RefreshCwIcon />
+    </TooltipIconButton>
+  );
+};
+
+function extractUserText(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const part of content) {
+    if (
+      part &&
+      typeof part === "object" &&
+      "type" in part &&
+      (part as { type?: unknown }).type === "text" &&
+      "text" in part &&
+      typeof (part as { text?: unknown }).text === "string"
+    ) {
+      parts.push((part as { text: string }).text);
+    }
+  }
+  return parts.join("\n\n").trim();
+}
+
 const AssistantActionBar: FC = () => {
   return (
     <ActionBarPrimitive.Root
@@ -315,11 +381,7 @@ const AssistantActionBar: FC = () => {
           </AuiIf>
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
-      <ActionBarPrimitive.Reload asChild>
-        <TooltipIconButton tooltip="Refresh">
-          <RefreshCwIcon />
-        </TooltipIconButton>
-      </ActionBarPrimitive.Reload>
+      <RefreshReplayButton />
       <ActionBarMorePrimitive.Root>
         <ActionBarMorePrimitive.Trigger asChild>
           <TooltipIconButton
