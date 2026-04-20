@@ -205,15 +205,21 @@ class RagBotService:
                 citations=[],
             )
 
+        # Deep-dive uses its own prompt path: `get_record_chunks` already
+        # returned every chunk of the pinned record, so we want to hand
+        # the LLM the whole source as a single body, not as a list of
+        # snippet "Excerpts" — that format made the model treat the text
+        # as partial and refuse to summarize ("cannot find title X in
+        # the provided excerpts"). See _generate_scoped.
+        if scope_record_id:
+            return self._generate_scoped(query, hits, history=history)
+
         native_hits = self._lookup_cached_hits(hits) or self._requery(query, hits)
         # Always pin the response to Traditional Chinese. The source corpus
         # (faguquanji) is in zh-TW, the UI targets zh-TW, but without an
         # explicit directive the LLM often drifts to Simplified zh-CN
-        # — 業障 becomes 业障, 資料 becomes 资料, etc. Deep-dive turns
-        # append their scope-pin guidance after this.
+        # — 業障 becomes 业障, 資料 becomes 资料, etc.
         prompt_prefix = _LANGUAGE_PROMPT_PREFIX
-        if scope_record_id:
-            prompt_prefix += _deep_dive_prompt_prefix(hits)
 
         if not history:
             generated = generate_answer(
@@ -241,6 +247,60 @@ class RagBotService:
             elif role == "assistant":
                 messages.append(AIMessage(content=content))
         messages.append(HumanMessage(content=prompt))
+
+        response = self._chat_model.invoke(messages)
+        return RagAnswer(text=_response_to_text(response), citations=hits)
+
+    def _generate_scoped(
+        self,
+        query: str,
+        hits: list[RetrievalHit],
+        *,
+        history: list[dict[str, str]] | None,
+    ) -> RagAnswer:
+        """Deep-dive generation: whole source as one body, not snippets.
+
+        The hits here are every chunk of a single record, sorted by
+        `chunk_index`, so joining their text reconstructs the full
+        source. We put that into a system message framing it as "the
+        complete content of source X" — the LLM then knows summarize /
+        quote / outline requests target the whole thing, instead of
+        treating each chunk as a separate excerpt it can't correlate.
+        """
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+
+        meta = hits[0].metadata or {}
+        title = (
+            meta.get("chapter_title") or hits[0].title or meta.get("book_title") or "(未命名來源)"
+        )
+        book = meta.get("book_title")
+        body = "\n\n".join(h.text for h in hits if h.text)
+
+        header = f"《{book}·{title}》" if book and book != title else f"《{title}》"
+        system_text = (
+            f"{_LANGUAGE_PROMPT_PREFIX}"
+            "你是法鼓山資料庫的助理,使用者已指定一份來源作為唯一依據。"
+            "以下是該來源的完整內容:\n\n"
+            f"=== {header} 完整內容開始 ===\n"
+            f"{body}\n"
+            f"=== {header} 完整內容結束 ===\n\n"
+            "回答規則:\n"
+            "- 根據上述完整內容回答使用者的問題,適時引用原文。\n"
+            "- 若問題超出上述內容範圍,請明說「這份來源未涉及」,不要引用外部知識編造。\n"
+            "- 不要把上述內容視為片段或節錄,它就是完整的來源文本。\n"
+        )
+
+        messages: list[Any] = [SystemMessage(content=system_text)]
+        for turn in history or []:
+            role = turn.get("role")
+            content = str(turn.get("content", "")).strip()
+            if not content:
+                continue
+            if role == "user":
+                messages.append(HumanMessage(content=content))
+            elif role == "assistant":
+                messages.append(AIMessage(content=content))
+        messages.append(HumanMessage(content=query))
 
         response = self._chat_model.invoke(messages)
         return RagAnswer(text=_response_to_text(response), citations=hits)
@@ -321,34 +381,6 @@ _LANGUAGE_PROMPT_PREFIX = (
     "terminology used in the provided source — do not convert "
     "characters to Simplified Chinese.\n"
 )
-
-
-def _deep_dive_prompt_prefix(hits: list[RetrievalHit]) -> str:
-    """Prompt prefix that pins the LLM to the pinned source in Deep Dive mode.
-
-    Called when `scope_record_id` is set — i.e. the chunks are all from
-    one record and the user is exploring it via the deep-dive overlay.
-    The text tells the model to prefer the provided content over its
-    training knowledge and to surface gaps rather than guess.
-    """
-    first = hits[0] if hits else None
-    if first is None:
-        return ""
-    meta = first.metadata or {}
-    label_parts = [
-        meta.get("book_title") or None,
-        meta.get("chapter_title") or None,
-        first.title or None,
-    ]
-    source_label = " · ".join(part for part in label_parts if part)
-    return (
-        "You are in Deep Dive mode — the user is exploring one specific "
-        "source and has pinned it as the sole reference. Base your answer "
-        "on the content below and quote specifically from it when useful. "
-        "If the source does not address the question, say so directly "
-        "rather than drawing on outside knowledge.\n"
-        + (f"Source: {source_label}\n" if source_label else "")
-    )
 
 
 def _response_to_text(response: Any) -> str:
