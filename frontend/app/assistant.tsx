@@ -30,6 +30,40 @@ async function fetchAccessToken(): Promise<string | null> {
   return data.accessToken ?? null;
 }
 
+// navigator.clipboard is only exposed on secure contexts (HTTPS or
+// localhost). When this app is served over plain HTTP on a LAN IP,
+// `navigator.clipboard` is undefined and assistant-ui's Copy primitive
+// throws "Cannot read properties of undefined (reading 'writeText')".
+// Shim a `writeText` that uses the legacy execCommand fallback so the
+// Copy button keeps working in those environments.
+if (typeof navigator !== "undefined" && !navigator.clipboard) {
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: {
+      writeText(text: string): Promise<void> {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.top = "0";
+        ta.style.left = "0";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        try {
+          const ok = document.execCommand("copy");
+          return ok
+            ? Promise.resolve()
+            : Promise.reject(new Error("execCommand copy failed"));
+        } finally {
+          document.body.removeChild(ta);
+        }
+      },
+    },
+  });
+}
+
 // Install resolvers before the runtime is created so initial thread requests
 // do not race ahead unauthenticated on first render.
 setChatApiToken(fetchAccessToken);
