@@ -50,6 +50,10 @@ export function createFeedbackAdapter(
     submit: ({ message, type }) => {
       const threadId = getThreadId();
       if (!threadId || !message.id) return;
+      // Skip the round-trip when the user re-clicks the thumb they
+      // already selected. Backend would upsert to the same value
+      // anyway; this saves a wasted POST per repeat click.
+      if (message.metadata?.submittedFeedback?.type === type) return;
       // Fire and forget — don't block the UI on a feedback write.
       void submit(threadId, message.id, type);
     },
