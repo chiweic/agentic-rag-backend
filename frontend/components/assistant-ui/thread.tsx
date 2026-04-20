@@ -17,11 +17,9 @@ import {
   ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
-  ExternalLinkIcon,
   MoreHorizontalIcon,
   PencilIcon,
   RefreshCwIcon,
-  SearchIcon,
   SquareIcon,
 } from "lucide-react";
 import type { FC } from "react";
@@ -41,7 +39,10 @@ import { Reasoning } from "@/components/assistant-ui/reasoning";
 import { StarterSuggestions } from "@/components/assistant-ui/starter-suggestions";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
-import { Citation as ToolUiCitation } from "@/components/tool-ui/citation";
+import {
+  CitationList,
+  type SerializableCitation,
+} from "@/components/tool-ui/citation";
 import { Button } from "@/components/ui/button";
 import type { Citation } from "@/lib/chatApi";
 import { toToolUiCitations } from "@/lib/citations-adapter";
@@ -255,53 +256,41 @@ const AssistantMessageCitations: FC = () => {
   if (!citations?.length) return null;
   const adapted = toToolUiCitations(citations);
   if (adapted.length === 0) return null;
+
+  // Keyed lookup so `onNavigate` can recover the Deep-Dive identifiers
+  // (recordId / sourceType) that tool-ui's SerializableCitation shape
+  // doesn't carry.
+  const byId = new Map(adapted.map((c) => [c.id, c]));
+  const handleNavigate = (href: string, citation: SerializableCitation) => {
+    const full = byId.get(citation.id);
+    if (full?.recordId && full?.sourceType) {
+      deepDive.open({
+        recordId: full.recordId,
+        sourceType: full.sourceType,
+        parentThreadId,
+      });
+      return;
+    }
+    // Fallback for citations missing scope identifiers — open the raw
+    // source in a new tab, same as tool-ui's default.
+    window.open(href, "_blank", "noreferrer");
+  };
+
+  // Strip Deep Dive-only fields so the list receives a clean
+  // SerializableCitation[] (tool-ui types it as such).
+  const display: SerializableCitation[] = adapted.map(
+    ({ recordId: _r, sourceType: _s, ...rest }) => rest,
+  );
+
   return (
     <>
-      <div className="mt-4 grid w-full gap-3 @md:grid-cols-2">
-        {adapted.map((c) => {
-          // Strip Deep Dive-only fields before passing to tool-ui so the
-          // SerializableCitation shape stays clean for the card.
-          const { recordId, sourceType, ...display } = c;
-          const canDeepDive = Boolean(recordId && sourceType);
-          return (
-            <div key={c.id} className="flex flex-col gap-1">
-              {/* Card is display-only — disabling pointer events on the
-                  tool-ui Citation suppresses its built-in click/hover
-                  so "Deep Dive" / "View Source" below are the single
-                  action targets. */}
-              <div className="pointer-events-none">
-                <ToolUiCitation {...display} variant="default" />
-              </div>
-              <div className="mt-1 flex items-center gap-3 px-1 text-muted-foreground text-xs">
-                {canDeepDive ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      deepDive.open({
-                        recordId: recordId!,
-                        sourceType: sourceType!,
-                        parentThreadId,
-                      })
-                    }
-                    className="inline-flex items-center gap-1 rounded-md hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                  >
-                    <SearchIcon className="size-3" />
-                    Deep Dive
-                  </button>
-                ) : null}
-                <a
-                  href={c.href}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 rounded-md hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-                >
-                  <ExternalLinkIcon className="size-3" />
-                  View Source
-                </a>
-              </div>
-            </div>
-          );
-        })}
+      <div className="mt-4">
+        <CitationList
+          id="assistant-citations"
+          variant="stacked"
+          citations={display}
+          onNavigate={handleNavigate}
+        />
       </div>
       {isLast ? <FollowupSuggestions /> : null}
     </>
