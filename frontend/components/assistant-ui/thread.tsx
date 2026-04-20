@@ -36,6 +36,10 @@ import {
   DeepDiveStarters,
   useDeepDiveSource,
 } from "@/components/assistant-ui/deep-dive-starters";
+import {
+  EventsWelcome,
+  useIsEventsScope,
+} from "@/components/assistant-ui/events-welcome";
 import { FollowupSuggestions } from "@/components/assistant-ui/followup-suggestions";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { Reasoning } from "@/components/assistant-ui/reasoning";
@@ -105,25 +109,44 @@ const ThreadScrollToBottom: FC = () => {
 };
 
 const ThreadWelcome: FC = () => {
-  // Inside the Deep Dive overlay, `DeepDiveSourceContext` is populated
-  // — swap global starter prompts for source-aware ones so empty-state
-  // clicks align with the pinned record's context.
+  // Three empty-state flavours share one chrome:
+  //   - Deep Dive overlay (pinned to one source record)
+  //   - /events tab (events corpus, recommendation starter cards)
+  //   - default chat (global starter prompts from the QA pool)
   const deepDiveSource = useDeepDiveSource();
   const isDeepDive = deepDiveSource !== null;
+  const isEvents = useIsEventsScope();
+
+  const heading = isDeepDive
+    ? "探索這份來源。"
+    : isEvents
+      ? "找活動?"
+      : "今天想問什麼？";
+  const subheading = isDeepDive
+    ? "可針對左側來源內容提出任何問題。"
+    : isEvents
+      ? "從推薦開始,或直接提問。"
+      : "帶點禪味的 AI";
 
   return (
     <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col">
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
         <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
           <h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both font-semibold text-3xl duration-200">
-            {isDeepDive ? "探索這份來源。" : "今天想問什麼？"}
+            {heading}
           </h1>
           <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-muted-foreground text-lg delay-75 duration-200">
-            {isDeepDive ? "可針對左側來源內容提出任何問題。" : "帶點禪味的 AI"}
+            {subheading}
           </p>
         </div>
       </div>
-      {isDeepDive ? <DeepDiveStarters /> : <StarterSuggestions />}
+      {isDeepDive ? (
+        <DeepDiveStarters />
+      ) : isEvents ? (
+        <EventsWelcome />
+      ) : (
+        <StarterSuggestions />
+      )}
     </div>
   );
 };
