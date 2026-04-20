@@ -15,6 +15,7 @@ import {
   setTokenResolver as setChatApiToken,
 } from "@/lib/chatApi";
 import { clearFollowupSuggestions } from "@/lib/followupSuggestions";
+import { setQuizTokenResolver } from "@/lib/quiz";
 import { setTokenResolver as setSourcesToken } from "@/lib/sources";
 import {
   setTokenResolver as setAdapterToken,
@@ -34,6 +35,7 @@ async function fetchAccessToken(): Promise<string | null> {
 setChatApiToken(fetchAccessToken);
 setAdapterToken(fetchAccessToken);
 setSourcesToken(fetchAccessToken);
+setQuizTokenResolver(fetchAccessToken);
 
 function useLangGraphRuntimeHook() {
   return useLangGraphRuntime({

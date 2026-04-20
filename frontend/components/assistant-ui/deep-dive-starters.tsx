@@ -9,9 +9,11 @@ import {
   QuoteIcon,
   StarIcon,
 } from "lucide-react";
-import { createContext, type FC, useContext } from "react";
+import { createContext, type FC, useContext, useState } from "react";
 
+import { QuizDialog } from "@/components/assistant-ui/quiz-dialog";
 import { Button } from "@/components/ui/button";
+import { buildQuizGradingPrompt, type Quiz } from "@/lib/quiz";
 import type { SourceRecord } from "@/lib/sources";
 
 /**
@@ -46,10 +48,13 @@ export const DeepDiveStarters: FC<{ variant?: "start" | "followup" }> = ({
 }) => {
   const source = useDeepDiveSource();
   const aui = useAui();
+  const [quizOpen, setQuizOpen] = useState(false);
 
   const prompts = buildDeepDivePrompts(source);
   const exploreHeading = variant === "start" ? "從這些問題開始:" : "繼續探索:";
-  const quizPromptText = buildQuizPromptText(source);
+  const quizReady = source !== null;
+  const sourceLabel =
+    source?.chapter_title || source?.title || source?.book_title || undefined;
 
   const send = (text: string) => {
     if (aui.thread().getState().isRunning) return;
@@ -58,6 +63,14 @@ export const DeepDiveStarters: FC<{ variant?: "start" | "followup" }> = ({
       content: [{ type: "text", text }],
       runConfig: composer.getState().runConfig,
     });
+  };
+
+  const handleQuizComplete = (
+    quiz: Quiz,
+    answers: Record<string, string[]>,
+  ) => {
+    setQuizOpen(false);
+    send(buildQuizGradingPrompt(quiz, answers));
   };
 
   return (
@@ -82,20 +95,33 @@ export const DeepDiveStarters: FC<{ variant?: "start" | "followup" }> = ({
             </Button>
           );
         })}
-        {/* Self-test merged into the same row. v1 dispatches a quiz-style
-            prompt via the chat; features_v2.md item 3 will later swap
-            this onClick for a richer quiz flow (preferences + question-
-            flow UI). */}
+        {/* Self-test opens a QuizDialog that fetches an MCQ from the
+            backend and renders it via @tool-ui/question-flow. Answers
+            come back through the component's onComplete — never the
+            composer — and we dispatch a grading turn into this same
+            thread. Disabled until the overlay's source fetch resolves
+            so we always have a record_id to query. */}
         <Button
           type="button"
           variant="ghost"
-          className="h-auto w-auto gap-2 rounded-2xl border border-border/70 bg-background/90 px-3 py-1.5 text-sm font-medium shadow-sm transition-all hover:border-foreground/20 hover:bg-muted/40"
-          onClick={() => send(quizPromptText)}
+          disabled={!quizReady}
+          className="h-auto w-auto gap-2 rounded-2xl border border-border/70 bg-background/90 px-3 py-1.5 text-sm font-medium shadow-sm transition-all hover:border-foreground/20 hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-60"
+          onClick={() => setQuizOpen(true)}
         >
           <GraduationCapIcon className="size-3.5 shrink-0 text-muted-foreground" />
           <span>小測驗</span>
         </Button>
       </div>
+      {source ? (
+        <QuizDialog
+          open={quizOpen}
+          onOpenChange={setQuizOpen}
+          sourceType={source.source_type}
+          recordId={source.record_id}
+          sourceLabel={sourceLabel}
+          onComplete={handleQuizComplete}
+        />
+      ) : null}
     </div>
   );
 };
@@ -140,22 +166,4 @@ const buildDeepDivePrompts = (
       icon: LightbulbIcon,
     },
   ];
-};
-
-/**
- * Prompt dispatched when the user clicks the self-test button.
- *
- * Stop-gap until features_v2.md item 3 ships its richer quiz flow
- * (preferences panel + question-flow UI + server-side quiz generation).
- * Shape: multi-question quiz with deferred answers so the model asks
- * one question, waits for the user's reply, then grades and explains.
- */
-const buildQuizPromptText = (source: SourceRecord | null): string => {
-  const handle =
-    source?.chapter_title || source?.title || source?.book_title || "這份來源";
-  return (
-    `我對「${handle}」的內容已有一定理解,請針對重點出三到五題測驗我。` +
-    `每次先只給一題,等我回答後再判斷對錯並解釋,接著再出下一題。` +
-    `題目涵蓋事實、理解與應用三種層次為佳。`
-  );
 };
