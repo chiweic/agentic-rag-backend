@@ -132,7 +132,7 @@ const StarterSuggestionButton: FC<{ suggestion: StarterSuggestion }> = ({
   return (
     <Button
       variant="ghost"
-      className="h-auto w-full flex-col items-start gap-2 rounded-3xl border border-border/70 bg-background/90 px-4 py-4 text-left text-sm shadow-sm transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:bg-muted/40"
+      className="h-auto w-full flex-col items-start rounded-3xl border border-border/70 bg-background/90 px-4 py-4 text-left text-sm shadow-sm transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:bg-muted/40"
       onClick={() => {
         if (aui.thread().getState().isRunning) return;
         const composer = aui.composer();
@@ -143,10 +143,6 @@ const StarterSuggestionButton: FC<{ suggestion: StarterSuggestion }> = ({
       }}
       type="button"
     >
-      <span className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-        <SparklesIcon className="size-3" />
-        Starter
-      </span>
       <span className="text-pretty font-medium text-foreground leading-6">
         {suggestion.text}
       </span>
@@ -170,7 +166,6 @@ const StarterSuggestionSkeleton: FC = () => {
           className="relative overflow-hidden rounded-3xl border border-border/70 bg-background/80 px-4 py-4"
         >
           <div className="space-y-3">
-            <div className="h-3 w-20 rounded-full bg-muted" />
             <div className="h-4 w-11/12 rounded-full bg-muted" />
             <div className="h-4 w-8/12 rounded-full bg-muted" />
           </div>
