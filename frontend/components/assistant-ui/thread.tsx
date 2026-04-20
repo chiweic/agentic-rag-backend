@@ -22,6 +22,8 @@ import {
   PencilIcon,
   RefreshCwIcon,
   SquareIcon,
+  ThumbsDownIcon,
+  ThumbsUpIcon,
 } from "lucide-react";
 import type { FC } from "react";
 import {
@@ -378,6 +380,42 @@ const AssistantActionBar: FC = () => {
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
       <RefreshReplayButton />
+      <ActionBarPrimitive.FeedbackPositive asChild>
+        <TooltipIconButton tooltip="有幫助">
+          <AuiIf
+            condition={(s) =>
+              s.message.metadata.submittedFeedback?.type === "positive"
+            }
+          >
+            <ThumbsUpIcon className="fill-current" />
+          </AuiIf>
+          <AuiIf
+            condition={(s) =>
+              s.message.metadata.submittedFeedback?.type !== "positive"
+            }
+          >
+            <ThumbsUpIcon />
+          </AuiIf>
+        </TooltipIconButton>
+      </ActionBarPrimitive.FeedbackPositive>
+      <ActionBarPrimitive.FeedbackNegative asChild>
+        <TooltipIconButton tooltip="沒幫助">
+          <AuiIf
+            condition={(s) =>
+              s.message.metadata.submittedFeedback?.type === "negative"
+            }
+          >
+            <ThumbsDownIcon className="fill-current" />
+          </AuiIf>
+          <AuiIf
+            condition={(s) =>
+              s.message.metadata.submittedFeedback?.type !== "negative"
+            }
+          >
+            <ThumbsDownIcon />
+          </AuiIf>
+        </TooltipIconButton>
+      </ActionBarPrimitive.FeedbackNegative>
       <ActionBarMorePrimitive.Root>
         <ActionBarMorePrimitive.Trigger asChild>
           <TooltipIconButton

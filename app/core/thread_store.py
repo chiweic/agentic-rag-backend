@@ -43,9 +43,25 @@ CREATE INDEX IF NOT EXISTS thread_metadata_user_created_idx
 ON thread_metadata (user_id, created_at DESC);
 """
 
+# Thumbs-up/down feedback per assistant message. Keyed on (thread,
+# message, user) so one user's reaction is independent of another's
+# on the same shared message, and so re-clicking replaces the prior
+# value instead of accumulating rows.
+_CREATE_FEEDBACK_TABLE = """
+CREATE TABLE IF NOT EXISTS message_feedback (
+    thread_id   TEXT NOT NULL,
+    message_id  TEXT NOT NULL,
+    user_id     TEXT NOT NULL,
+    feedback    TEXT NOT NULL CHECK (feedback IN ('positive', 'negative')),
+    created_at  DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (thread_id, message_id, user_id)
+);
+"""
+
 # Module-level backend — set once during startup
 _conn: AsyncConnection | None = None
 _memory: dict[str, dict] | None = None
+_feedback_memory: dict[tuple[str, str, str], str] | None = None
 
 # Guards reopen so concurrent CRUD calls only reconnect once when the
 # shared Postgres connection goes stale (timeout, server restart).
@@ -108,12 +124,13 @@ async def init_store(conn: AsyncConnection | None = None) -> list[str]:
     With *conn*: Postgres-backed (creates table if needed).
     Without *conn*: in-memory dict (for tests).
     """
-    global _conn, _memory
+    global _conn, _memory, _feedback_memory
     purged_thread_ids: list[str] = []
 
     if conn is not None:
         _conn = conn
         _memory = None
+        _feedback_memory = None
         async with conn.cursor() as cur:
             await cur.execute(_CREATE_TABLE)
 
@@ -129,12 +146,14 @@ async def init_store(conn: AsyncConnection | None = None) -> list[str]:
 
             await cur.execute("ALTER TABLE thread_metadata ALTER COLUMN user_id SET NOT NULL")
             await cur.execute(_CREATE_USER_CREATED_INDEX)
+            await cur.execute(_CREATE_FEEDBACK_TABLE)
 
         await conn.commit()
         log.info("Thread metadata store initialised (postgres)")
     else:
         _conn = None
         _memory = {}
+        _feedback_memory = {}
         log.info("Thread metadata store initialised (memory)")
 
     return purged_thread_ids
@@ -361,3 +380,88 @@ async def delete_thread(thread_id: str, *, user_id: str | None = None) -> bool:
     if deleted:
         log.info("Thread deleted: %s", thread_id)
     return deleted
+
+
+# ---------------------------------------------------------------------------
+# Message feedback (thumbs up/down)
+# ---------------------------------------------------------------------------
+
+
+async def set_feedback(
+    thread_id: str,
+    message_id: str,
+    user_id: str,
+    feedback: str,
+) -> None:
+    """Upsert a thumbs-up/down reaction for a (thread, message, user) triple.
+
+    Re-calling with a different value replaces the prior one; a third
+    value is rejected at the SQL CHECK constraint, so validation should
+    happen at the API boundary.
+    """
+    _require_ready()
+
+    if _is_memory():
+        assert _feedback_memory is not None
+        _feedback_memory[(thread_id, message_id, user_id)] = feedback
+        return
+
+    conn = await _ensure_connection()
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "INSERT INTO message_feedback"
+            " (thread_id, message_id, user_id, feedback, created_at)"
+            " VALUES (%s, %s, %s, %s, %s)"
+            " ON CONFLICT (thread_id, message_id, user_id)"
+            " DO UPDATE SET feedback = EXCLUDED.feedback,"
+            "               created_at = EXCLUDED.created_at",
+            (thread_id, message_id, user_id, feedback, time.time()),
+        )
+    await conn.commit()
+
+
+async def clear_feedback(thread_id: str, message_id: str, user_id: str) -> bool:
+    """Remove the reaction for a (thread, message, user) triple.
+
+    Returns True if a row was deleted, False if none existed. Used when
+    the user clicks the same thumb again to un-rate the message.
+    """
+    _require_ready()
+
+    if _is_memory():
+        assert _feedback_memory is not None
+        return _feedback_memory.pop((thread_id, message_id, user_id), None) is not None
+
+    conn = await _ensure_connection()
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "DELETE FROM message_feedback"
+            " WHERE thread_id = %s AND message_id = %s AND user_id = %s",
+            (thread_id, message_id, user_id),
+        )
+        deleted = cur.rowcount > 0
+    await conn.commit()
+    return deleted
+
+
+async def get_feedback(
+    thread_id: str,
+    message_id: str,
+    user_id: str,
+) -> str | None:
+    """Return the user's reaction for the given message, or None."""
+    _require_ready()
+
+    if _is_memory():
+        assert _feedback_memory is not None
+        return _feedback_memory.get((thread_id, message_id, user_id))
+
+    conn = await _ensure_connection()
+    async with conn.cursor() as cur:
+        await cur.execute(
+            "SELECT feedback FROM message_feedback"
+            " WHERE thread_id = %s AND message_id = %s AND user_id = %s",
+            (thread_id, message_id, user_id),
+        )
+        row = await cur.fetchone()
+    return row[0] if row else None

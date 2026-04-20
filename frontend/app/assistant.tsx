@@ -5,6 +5,7 @@ import {
   useRemoteThreadListRuntime,
 } from "@assistant-ui/react";
 import { useLangGraphRuntime } from "@assistant-ui/react-langgraph";
+import { useRef } from "react";
 import { DeepDiveProvider } from "@/components/assistant-ui/deep-dive-provider";
 import { Thread } from "@/components/assistant-ui/thread";
 import { ThreadListSidebar } from "@/components/assistant-ui/thread-list-sidebar";
@@ -14,6 +15,10 @@ import {
   sendMessage,
   setTokenResolver as setChatApiToken,
 } from "@/lib/chatApi";
+import {
+  createFeedbackAdapter,
+  setFeedbackTokenResolver,
+} from "@/lib/feedbackAdapter";
 import { clearFollowupSuggestions } from "@/lib/followupSuggestions";
 import { setQuizTokenResolver } from "@/lib/quiz";
 import { setTokenResolver as setSourcesToken } from "@/lib/sources";
@@ -70,13 +75,21 @@ setChatApiToken(fetchAccessToken);
 setAdapterToken(fetchAccessToken);
 setSourcesToken(fetchAccessToken);
 setQuizTokenResolver(fetchAccessToken);
+setFeedbackTokenResolver(fetchAccessToken);
 
 function useLangGraphRuntimeHook() {
+  // Tracks the most recent thread id touched by stream/load so the
+  // FeedbackAdapter (which only gets {message, type}) can tag its
+  // POST with the correct thread. Kept as a ref so updating it
+  // doesn't force a runtime rebuild.
+  const activeThreadIdRef = useRef<string | null>(null);
+
   return useLangGraphRuntime({
     stream: async function* (messages, { initialize, command }) {
       const { externalId } = await initialize();
       if (!externalId) throw new Error("Thread not found");
 
+      activeThreadIdRef.current = externalId;
       clearFollowupSuggestions(externalId);
       yield* sendMessage({
         threadId: externalId,
@@ -89,10 +102,14 @@ function useLangGraphRuntimeHook() {
       return { externalId: thread_id };
     },
     load: async (externalId) => {
+      activeThreadIdRef.current = externalId;
       const state = await getThreadState(externalId);
       return {
         messages: state.messages,
       };
+    },
+    adapters: {
+      feedback: createFeedbackAdapter(() => activeThreadIdRef.current),
     },
   });
 }
