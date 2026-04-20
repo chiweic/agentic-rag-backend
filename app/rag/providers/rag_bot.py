@@ -206,7 +206,14 @@ class RagBotService:
             )
 
         native_hits = self._lookup_cached_hits(hits) or self._requery(query, hits)
-        prompt_prefix = _deep_dive_prompt_prefix(hits) if scope_record_id else ""
+        # Always pin the response to Traditional Chinese. The source corpus
+        # (faguquanji) is in zh-TW, the UI targets zh-TW, but without an
+        # explicit directive the LLM often drifts to Simplified zh-CN
+        # — 業障 becomes 业障, 資料 becomes 资料, etc. Deep-dive turns
+        # append their scope-pin guidance after this.
+        prompt_prefix = _LANGUAGE_PROMPT_PREFIX
+        if scope_record_id:
+            prompt_prefix += _deep_dive_prompt_prefix(hits)
 
         if not history:
             generated = generate_answer(
@@ -307,6 +314,13 @@ class RagBotService:
                 **refs,
             },
         )
+
+
+_LANGUAGE_PROMPT_PREFIX = (
+    "Respond in Traditional Chinese (zh-TW, 繁體中文). Match the "
+    "terminology used in the provided source — do not convert "
+    "characters to Simplified Chinese.\n"
+)
 
 
 def _deep_dive_prompt_prefix(hits: list[RetrievalHit]) -> str:
