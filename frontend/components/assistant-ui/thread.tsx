@@ -261,6 +261,7 @@ const AssistantMessageCitations: FC = () => {
   const deepDive = useDeepDive();
   const deepDiveSource = useDeepDiveSource();
   const isDeepDive = deepDiveSource !== null;
+  const isEvents = useIsEventsScope();
 
   // Deep-dive mode: backend suppresses citations to avoid Deep-Dive-in-
   // Deep-Dive loops, so the normal citation/follow-up render path is
@@ -285,7 +286,12 @@ const AssistantMessageCitations: FC = () => {
   const byId = new Map(adapted.map((c) => [c.id, c]));
   const handleNavigate = (href: string, citation: SerializableCitation) => {
     const full = byId.get(citation.id);
-    if (full?.recordId && full?.sourceType) {
+    // Events scope intentionally bypasses Deep Dive — that flow was
+    // scoped out of this milestone ("deep dive is not needed"). The
+    // /events route also doesn't host a DeepDiveProvider, so
+    // `deepDive` is null there; either way we fall through to the
+    // raw source_url in a new tab.
+    if (!isEvents && deepDive && full?.recordId && full?.sourceType) {
       deepDive.open({
         recordId: full.recordId,
         sourceType: full.sourceType,
@@ -293,8 +299,6 @@ const AssistantMessageCitations: FC = () => {
       });
       return;
     }
-    // Fallback for citations missing scope identifiers — open the raw
-    // source in a new tab, same as tool-ui's default.
     window.open(href, "_blank", "noreferrer");
   };
 

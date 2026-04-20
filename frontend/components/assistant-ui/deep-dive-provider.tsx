@@ -94,10 +94,12 @@ export const DeepDiveProvider: FC<PropsWithChildren> = ({ children }) => {
   );
 };
 
-export const useDeepDive = (): DeepDiveContextValue => {
-  const ctx = useContext(DeepDiveContext);
-  if (!ctx) {
-    throw new Error("useDeepDive must be used inside a DeepDiveProvider");
-  }
-  return ctx;
-};
+/**
+ * Returns the Deep Dive controller, or `null` when the caller isn't
+ * inside a `DeepDiveProvider`. Callers that live in both Deep-Dive-
+ * aware routes (main chat) and non-aware routes (e.g. /events) should
+ * null-check and fall back to a sensible non-Deep-Dive action
+ * (typically `window.open(href, "_blank")`) rather than crash.
+ */
+export const useDeepDive = (): DeepDiveContextValue | null =>
+  useContext(DeepDiveContext);
