@@ -15,6 +15,7 @@ from app.api.chat import router as chat_router  # noqa: E402
 from app.api.feedback import router as feedback_router  # noqa: E402
 from app.api.openai_compat import router as openai_router  # noqa: E402
 from app.api.quiz import router as quiz_router  # noqa: E402
+from app.api.recommendations import router as recommendations_router  # noqa: E402
 from app.api.sources import router as sources_router  # noqa: E402
 from app.api.suggestions import router as suggestions_router  # noqa: E402
 from app.api.threads import router as threads_router  # noqa: E402
@@ -120,6 +121,7 @@ def _include_routers(app: FastAPI, settings) -> None:
     app.include_router(sources_router)
     app.include_router(quiz_router)
     app.include_router(feedback_router)
+    app.include_router(recommendations_router)
 
     if settings.auth_dev_mode:
         from app.api.auth_dev import router as auth_dev_router
