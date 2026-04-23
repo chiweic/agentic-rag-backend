@@ -42,7 +42,11 @@ def test_static_feed_headlines_have_required_fields():
         assert h.title, "title cannot be empty"
 
 
-def test_build_news_feed_default_is_static():
+def test_build_news_feed_selects_static_when_set(monkeypatch):
+    # `.env` may override news_feed_provider in the live process
+    # (e.g. to "google_rss"), so pin the provider explicitly instead
+    # of relying on the class-level default.
+    monkeypatch.setattr(settings, "news_feed_provider", "static")
     feed = build_news_feed(settings)
     assert isinstance(feed, StaticSampleFeed)
 

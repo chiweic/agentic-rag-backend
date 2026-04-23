@@ -55,6 +55,8 @@ def build_news_feed(settings: "Settings") -> NewsFeedProvider:
     if provider == "google_rss":
         from app.news.providers._google_rss import GoogleNewsRssFeed
 
-        return GoogleNewsRssFeed()
+        return GoogleNewsRssFeed(
+            cache_ttl_seconds=settings.news_feed_cache_ttl_seconds,
+        )
 
     raise RuntimeError(f"Unknown NEWS_FEED_PROVIDER={provider!r}. Supported: static, google_rss.")

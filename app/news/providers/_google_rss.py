@@ -28,7 +28,12 @@ log = get_logger(__name__)
 
 _BASE_URL = "https://news.google.com/rss"
 _DEFAULT_PARAMS = {"hl": "zh-TW", "gl": "TW", "ceid": "TW:zh-Hant"}
-_CACHE_TTL_SECONDS = 600  # 10 min — Google throttles aggressive polling.
+# Default cache TTL when no explicit value is passed — 24h, aligned
+# with settings.news_feed_cache_ttl_seconds. The factory in
+# app/news/__init__.py wires the live setting in; this default is
+# only used when GoogleNewsRssFeed is instantiated directly (e.g.
+# tests).
+_DEFAULT_CACHE_TTL_SECONDS = 86400
 _FETCH_TIMEOUT_SECONDS = 10.0
 _USER_AGENT = "Mozilla/5.0 (compatible; ddm-backend-v2 news adapter; " "+https://www.ddm.org.tw)"
 
@@ -41,7 +46,7 @@ class GoogleNewsRssFeed:
     process-wide.
     """
 
-    def __init__(self, *, cache_ttl_seconds: float = _CACHE_TTL_SECONDS) -> None:
+    def __init__(self, *, cache_ttl_seconds: float = _DEFAULT_CACHE_TTL_SECONDS) -> None:
         self._cache: list[NewsHeadline] | None = None
         self._cache_expires: float = 0.0
         self._cache_ttl = cache_ttl_seconds
