@@ -44,6 +44,7 @@ import { FollowupSuggestions } from "@/components/assistant-ui/followup-suggesti
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { MediaCitationList } from "@/components/assistant-ui/media-citation-list";
 import { Reasoning } from "@/components/assistant-ui/reasoning";
+import { ShengYenFollowups } from "@/components/assistant-ui/sheng-yen-followups";
 import {
   ShengYenWelcome,
   useIsShengYenScope,
@@ -295,14 +296,13 @@ const AssistantMessageCitations: FC = () => {
   if (adapted.length === 0) return null;
 
   // 聖嚴師父身影 tab: render cited A/V chunks as playable mini-cards
-  // (Audio / YouTube) instead of the text-stacked pill used elsewhere.
-  // Followup suggestions are omitted for this tab — the welcome cards
-  // already steer the next query, and a second row of follow-up chips
-  // on top of media cards reads as noise.
+  // (Audio / YouTube) instead of the text-stacked pill used
+  // elsewhere, and follow-ups as a 4-col grid below.
   if (isShengYen) {
     return (
       <div className="mt-4">
         <MediaCitationList id="sheng-yen-citations" citations={adapted} />
+        {isLast ? <ShengYenFollowups /> : null}
       </div>
     );
   }
