@@ -28,7 +28,7 @@ export const ShengYenFollowups: FC = () => {
         <SparklesIcon className="size-4" />
         建議延伸問題
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {suggestions.map((suggestion) => (
           <Button
             key={suggestion.id}
