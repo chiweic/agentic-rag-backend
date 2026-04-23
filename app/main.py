@@ -19,6 +19,7 @@ from app.api.recommendations import router as recommendations_router  # noqa: E4
 from app.api.sources import router as sources_router  # noqa: E402
 from app.api.suggestions import router as suggestions_router  # noqa: E402
 from app.api.threads import router as threads_router  # noqa: E402
+from app.api.whats_new import router as whats_new_router  # noqa: E402
 from app.core.auth import init_providers  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.core.tracing import shutdown_langfuse  # noqa: E402
@@ -130,6 +131,7 @@ def _include_routers(app: FastAPI, settings) -> None:
     app.include_router(quiz_router)
     app.include_router(feedback_router)
     app.include_router(recommendations_router)
+    app.include_router(whats_new_router)
 
     if settings.auth_dev_mode:
         from app.api.auth_dev import router as auth_dev_router

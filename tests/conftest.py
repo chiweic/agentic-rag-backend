@@ -16,6 +16,8 @@ from app.core import thread_store
 from app.core.auth import UserClaims, get_current_user
 from app.core.config import settings
 from app.main import app
+from app.news import set_news_feed
+from app.news.providers._static import StaticSampleFeed
 from app.rag import set_rag_service
 from app.rag.protocol import RagAnswer, RagService, RetrievalHit
 from app.suggestions.starter import StarterSuggestionsPool
@@ -166,9 +168,15 @@ async def _setup_backends():
     await pool.build()
     app.state.starter_pool = pool
 
+    # The 新鮮事 tab reads current_news_feed(); install the static
+    # sample feed so /whats-new-suggestions has something to return
+    # under test (no network).
+    set_news_feed(StaticSampleFeed())
+
     yield
 
     set_rag_service(None)
+    set_news_feed(None)
     _FAKE = None
     app.state.starter_pool = None
 
