@@ -219,7 +219,11 @@ def _multi_source_search(
             log.exception("retrieve | multi-source search failed | source=%s", source)
             per_source_hits[source] = []
             continue
-        per_source_hits[source] = list(hits)
+        # rag_bot's search does not currently honour `limit` — it can
+        # return more than requested. Truncate here so one corpus
+        # can't fill every slot before the modality-priority merge
+        # has a chance to round-robin across sources / groups.
+        per_source_hits[source] = list(hits)[:per_source_k]
 
     return merge_with_modality_priority(
         per_source_hits,

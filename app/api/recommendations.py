@@ -134,6 +134,9 @@ def _search_multi(
             log.exception("recommendations | search failed | source=%s", source)
             per_source_hits[source] = []
             continue
-        per_source_hits[source] = list(hits)
+        # See comment in app/agent/nodes.py::_multi_source_search —
+        # rag_bot's search doesn't honour `limit`, so one corpus can
+        # flood the merge without this truncation.
+        per_source_hits[source] = list(hits)[:per_source_k]
 
     return merge_with_modality_priority(per_source_hits, source_types, limit=limit)
