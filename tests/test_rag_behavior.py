@@ -372,9 +372,10 @@ async def test_threads_source_types_fans_out_across_corpora(client, fake_rag_ser
 
 
 @pytest.mark.asyncio
-async def test_threads_source_types_round_robin_interleave(client, fake_rag_service):
-    """Merged citations are round-robin interleaved (source_A #0, source_B #0,
-    source_A #1, source_B #1, …) rather than concatenated or score-sorted."""
+async def test_threads_source_types_videos_before_audio(client, fake_rag_service):
+    """Merged citations group videos before audio (modality priority),
+    with round-robin WITHIN each modality group. The /sheng-yen tab
+    relies on this so video cards render at the top of the grid."""
     resp = await client.post("/threads", json={})
     thread_id = resp.json()["thread_id"]
 
@@ -388,7 +389,8 @@ async def test_threads_source_types_round_robin_interleave(client, fake_rag_serv
     assert resp.status_code == 200
 
     # Fake returns 2 hits per search with metadata.source_type tagging
-    # which corpus they came from. Expect A[0], B[0], A[1], B[1] order.
+    # which corpus they came from. With "videos before audio", the
+    # single video source's two hits lead, then the audio source's.
     values_events = [e for e in _parse_sse(resp.text) if e["event"] == "values"]
     payload = json.loads(values_events[-1]["data"])
     assistant = next(m for m in reversed(payload["messages"]) if m["role"] == "assistant")
@@ -397,10 +399,10 @@ async def test_threads_source_types_round_robin_interleave(client, fake_rag_serv
     )
     sources_in_order = [c["metadata"]["source_type"] for c in citations_block["citations"]]
     assert sources_in_order[:4] == [
-        "audio",
+        "video_ddmtv01",
         "video_ddmtv01",
         "audio",
-        "video_ddmtv01",
+        "audio",
     ]
 
 
@@ -483,16 +485,18 @@ async def test_recommendations_multi_source_search(client, fake_rag_service, mon
     assert body["status"] == "ok"
     assert body["profile"] == "stubbed interest profile"
 
-    # One search per corpus (ceil(6/3)=2 hits each, so 6 total, order A0/B0/C0/A1/B1/C1).
+    # One search per corpus (ceil(6/3)=2 hits each). With modality
+    # priority, the merged order is videos first (round-robin between
+    # video_ddmtv01 and video_ddmtv02) then audio.
     calls = [c["source_type"] for c in fake_rag_service.search_calls]
     assert calls == ["audio", "video_ddmtv01", "video_ddmtv02"]
 
     sources_in_order = [e["metadata"]["source_type"] for e in body["events"]]
     assert sources_in_order == [
-        "audio",
+        "video_ddmtv01",
+        "video_ddmtv02",
         "video_ddmtv01",
         "video_ddmtv02",
         "audio",
-        "video_ddmtv01",
-        "video_ddmtv02",
+        "audio",
     ]

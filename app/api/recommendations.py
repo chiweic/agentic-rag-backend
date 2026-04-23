@@ -114,31 +114,26 @@ def _search_multi(
     source_types: list[str],
     limit: int,
 ) -> list[RetrievalHit]:
-    """Per-source top-k + round-robin interleave.
+    """Per-source top-k + modality-priority merge.
 
-    Mirrors the multi-source merge in `app/agent/nodes.py::_multi_source_search`,
-    kept separate so the endpoint's per-call limit is honoured exactly
-    (agent retrieval uses `settings.retrieval_limit`).
+    Delegates ordering to `app.rag.merge.merge_with_modality_priority`
+    so the rule ("videos before audio, round-robin within each
+    modality") stays co-located with the agent-side retrieval merge.
     """
     if not source_types:
         return []
 
+    from app.rag.merge import merge_with_modality_priority
+
     per_source_k = max(1, -(-limit // len(source_types)))  # ceil div
-    per_source_hits: list[list[RetrievalHit]] = []
+    per_source_hits: dict[str, list[RetrievalHit]] = {}
     for source in source_types:
         try:
             hits = service.search(query, source_type=source, limit=per_source_k)
         except Exception:  # noqa: BLE001
             log.exception("recommendations | search failed | source=%s", source)
-            per_source_hits.append([])
+            per_source_hits[source] = []
             continue
-        per_source_hits.append(list(hits))
+        per_source_hits[source] = list(hits)
 
-    merged: list[RetrievalHit] = []
-    idx = 0
-    while any(idx < len(p) for p in per_source_hits):
-        for per in per_source_hits:
-            if idx < len(per):
-                merged.append(per[idx])
-        idx += 1
-    return merged[:limit]
+    return merge_with_modality_priority(per_source_hits, source_types, limit=limit)

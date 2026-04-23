@@ -194,14 +194,13 @@ def _multi_source_search(
     query: str,
     source_types: list[str],
 ) -> list:
-    """Fan out `service.search` across corpora and round-robin merge.
+    """Fan out `service.search` across corpora and modality-priority merge.
 
     Per-source top-k is computed from `settings.retrieval_limit`
     distributed across the sources (ceiling-divide so a limit of 5 with
-    3 sources still pulls 2 per source rather than 1). The round-robin
-    interleave guarantees every corpus is represented in the top of the
-    list — score-based global sort would otherwise let one corpus's
-    higher score distribution dominate.
+    3 sources still pulls 2 per source rather than 1). The merge is
+    `merge_with_modality_priority` — videos before audio, round-robin
+    within each modality.
 
     Defensively swallows per-source search failures: one flaky corpus
     shouldn't 5xx the whole multi-source retrieve.
@@ -209,25 +208,24 @@ def _multi_source_search(
     if not source_types:
         return []
 
+    from app.rag.merge import merge_with_modality_priority
+
     per_source_k = max(1, -(-settings.retrieval_limit // len(source_types)))  # ceil div
-    per_source_hits: list[list] = []
+    per_source_hits: dict[str, list] = {}
     for source in source_types:
         try:
             hits = service.search(query, source_type=source, limit=per_source_k)
         except Exception:  # noqa: BLE001
             log.exception("retrieve | multi-source search failed | source=%s", source)
-            per_source_hits.append([])
+            per_source_hits[source] = []
             continue
-        per_source_hits.append(list(hits))
+        per_source_hits[source] = list(hits)
 
-    merged: list = []
-    idx = 0
-    while any(idx < len(p) for p in per_source_hits):
-        for per in per_source_hits:
-            if idx < len(per):
-                merged.append(per[idx])
-        idx += 1
-    return merged[: settings.retrieval_limit]
+    return merge_with_modality_priority(
+        per_source_hits,
+        source_types,
+        limit=settings.retrieval_limit,
+    )
 
 
 # ---------------------------------------------------------------------------
