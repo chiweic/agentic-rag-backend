@@ -114,14 +114,37 @@ export const ShengYenWelcome: FC = () => {
     );
   }
 
+  const videoCards = cards.filter((c) => c.kind === "youtube");
+  const audioCards = cards.filter((c) => c.kind === "audio");
+  const fallbackCards = cards.filter((c) => c.kind === "text");
+
   return (
     <div className="w-full px-4">
       {profile ? <Profile profile={profile} /> : null}
-      <div className="mt-3 grid gap-3 pb-4 @md:grid-cols-2">
-        {cards.map((card) => (
-          <MediaStarterCard key={card.chunkId} card={card} onSelect={send} />
-        ))}
-      </div>
+      {/* Videos lead: 16:9 cards pack nicely at 4-across on wide
+          viewports. Audio cards below — they carry a transcript
+          excerpt that wants reading width, so 2-across. */}
+      {videoCards.length > 0 ? (
+        <div className="mt-3 grid gap-3 pb-3 @md:grid-cols-4">
+          {videoCards.map((card) => (
+            <MediaStarterCard key={card.chunkId} card={card} onSelect={send} />
+          ))}
+        </div>
+      ) : null}
+      {audioCards.length > 0 ? (
+        <div className="mt-1 grid gap-3 pb-3 @md:grid-cols-2">
+          {audioCards.map((card) => (
+            <MediaStarterCard key={card.chunkId} card={card} onSelect={send} />
+          ))}
+        </div>
+      ) : null}
+      {fallbackCards.length > 0 ? (
+        <div className="mt-1 grid gap-3 pb-4 @md:grid-cols-2">
+          {fallbackCards.map((card) => (
+            <MediaStarterCard key={card.chunkId} card={card} onSelect={send} />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 };
