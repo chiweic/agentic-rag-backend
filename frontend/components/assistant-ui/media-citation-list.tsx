@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLinkIcon } from "lucide-react";
+import { AudioLinesIcon, ExternalLinkIcon } from "lucide-react";
 import type { FC } from "react";
 import { YouTubeEmbed } from "@/components/assistant-ui/youtube-embed";
 import { Audio } from "@/components/tool-ui/audio";
@@ -36,7 +36,7 @@ export const MediaCitationList: FC<Props> = ({ id, citations }) => {
     <div
       data-tool-ui-id={id}
       data-slot="media-citation-list"
-      className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4"
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-5"
     >
       {citations.map((c) => (
         <MediaCitationCard key={c.id} citation={c} />
@@ -51,15 +51,19 @@ const MediaCitationCard: FC<{ citation: DeepDiveableCitation }> = ({
   const { id, href, title, sourceType } = citation;
 
   if (sourceType === "audio") {
+    // Wrap in the same card shell video uses — aspect-video media
+    // area on top (audio has no artwork, so we use a muted gradient
+    // with a waveform icon so audio + video rows share one visual
+    // rhythm) followed by title + compact controls + source link.
     return (
-      <div className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-background/90 p-3 shadow-sm">
-        <Audio
-          id={`sy-cite-${id}`}
-          assetId={id}
-          src={href}
-          title={title}
-          variant="compact"
-        />
+      <div className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-background/90 p-2 shadow-sm">
+        <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-muted/40 to-muted/80">
+          <AudioLinesIcon className="size-8 text-muted-foreground/60" />
+        </div>
+        <div className="line-clamp-2 px-1 text-foreground text-sm font-medium leading-snug">
+          {title}
+        </div>
+        <Audio id={`sy-cite-${id}`} assetId={id} src={href} variant="compact" />
         <OpenSourceLink href={href} />
       </div>
     );
@@ -67,9 +71,11 @@ const MediaCitationCard: FC<{ citation: DeepDiveableCitation }> = ({
 
   if (sourceType && YOUTUBE_SOURCE_TYPES.has(sourceType)) {
     return (
-      <div className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-background/90 p-3 shadow-sm">
+      <div className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-background/90 p-2 shadow-sm">
         <YouTubeEmbed url={href} title={title} />
-        <div className="px-1 text-foreground text-sm font-medium">{title}</div>
+        <div className="line-clamp-2 px-1 text-foreground text-sm font-medium leading-snug">
+          {title}
+        </div>
         <OpenSourceLink href={href} />
       </div>
     );
