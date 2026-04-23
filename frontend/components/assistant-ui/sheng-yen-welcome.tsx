@@ -121,11 +121,13 @@ export const ShengYenWelcome: FC = () => {
   return (
     <div className="w-full px-4">
       {profile ? <Profile profile={profile} /> : null}
-      {/* Videos lead: 16:9 cards pack nicely at 4-across on wide
-          viewports. Audio cards below — they carry a transcript
-          excerpt that wants reading width, so 2-across. */}
+      {/* Videos lead: 16:9 cards at 3-across on wide viewports. With
+          the default limit=6 (4 video hits from the ceil(6/3) merge)
+          that's one full row of 3 plus one on the second row. Audio
+          cards below — they carry a transcript excerpt that wants
+          reading width, so 2-across. */}
       {videoCards.length > 0 ? (
-        <div className="mt-3 grid gap-3 pb-3 @md:grid-cols-4">
+        <div className="mt-3 grid gap-3 pb-3 @md:grid-cols-3">
           {videoCards.map((card) => (
             <MediaStarterCard key={card.chunkId} card={card} onSelect={send} />
           ))}
