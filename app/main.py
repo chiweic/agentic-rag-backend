@@ -29,6 +29,7 @@ async def lifespan(app: FastAPI):
     import asyncio
 
     from app.core.thread_store import close_store, init_store
+    from app.news import build_news_feed, set_news_feed
     from app.rag import build_rag_service, set_rag_service
     from app.suggestions import StarterSuggestionsPool
 
@@ -39,6 +40,13 @@ async def lifespan(app: FastAPI):
     # dependency injection (keeps the route signatures clean).
     set_rag_service(build_rag_service(settings))
     log.info("RAG provider: %s", settings.rag_provider)
+
+    # News feed for the 新鮮事 tab (features_v4.md §2). Same
+    # module-level slot pattern as the RAG service; `static` default
+    # works offline so CI and fresh devs aren't blocked on wiring up a
+    # real news key.
+    set_news_feed(build_news_feed(settings))
+    log.info("News feed provider: %s", settings.news_feed_provider)
 
     # Starter suggestions pool — built in an asyncio background task so
     # startup isn't blocked on Milvus + LLM calls. The HTTP layer returns

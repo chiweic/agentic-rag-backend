@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     max_message_window: int = 20  # messages sent to LLM (full history stays in DB)
     max_threads_per_user: int = 100  # 0 = unlimited
 
+    # News feed (features_v4) — drives the 新鮮事 tab welcome
+    # suggestions. "static" returns a fixed sample set so the feature
+    # works end-to-end in dev/CI without a live news key.
+    news_feed_provider: Literal["static"] = "static"
+
     # Suggestions (features_v1) — starter + follow-up prompt generation
     suggestions_qa_collection: str = ""  # empty = auto-detect latest rag_bot_qa_*
     suggestions_pool_size: int = 30
