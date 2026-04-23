@@ -21,13 +21,13 @@ export const FollowupSuggestions: FC = () => {
         <SparklesIcon className="size-4" />
         建議延伸問題
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-col gap-2">
         {suggestions.map((suggestion) => (
           <Button
             key={suggestion.id}
             type="button"
             variant="outline"
-            className="h-auto max-w-full justify-start gap-2 rounded-full px-4 py-2 text-left text-sm"
+            className="h-auto w-full items-start justify-between gap-2 rounded-2xl px-4 py-3 text-left text-sm"
             onClick={() => {
               if (aui.thread().getState().isRunning) return;
               const composer = aui.composer();
@@ -37,8 +37,8 @@ export const FollowupSuggestions: FC = () => {
               });
             }}
           >
-            <span className="truncate">{suggestion.text}</span>
-            <ArrowUpRightIcon className="size-3.5 shrink-0" />
+            <span className="text-pretty leading-snug">{suggestion.text}</span>
+            <ArrowUpRightIcon className="size-3.5 shrink-0 translate-y-0.5" />
           </Button>
         ))}
       </div>
