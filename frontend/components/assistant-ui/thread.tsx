@@ -345,10 +345,7 @@ const AssistantMessageCitations: FC = () => {
           onNavigate={handleNavigate}
         />
       </div>
-      {/* FollowupSuggestions temporarily disabled — restore once the
-          stacked-popover layout is verified working in the browser.
-          Tracking: v3 follow-up layout debug. */}
-      {isLast ? null : null}
+      {isLast ? <FollowupSuggestions /> : null}
     </>
   );
 };
