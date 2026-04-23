@@ -42,6 +42,7 @@ import {
 } from "@/components/assistant-ui/events-welcome";
 import { FollowupSuggestions } from "@/components/assistant-ui/followup-suggestions";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
+import { MediaCitationList } from "@/components/assistant-ui/media-citation-list";
 import { Reasoning } from "@/components/assistant-ui/reasoning";
 import {
   ShengYenWelcome,
@@ -274,6 +275,7 @@ const AssistantMessageCitations: FC = () => {
   const deepDiveSource = useDeepDiveSource();
   const isDeepDive = deepDiveSource !== null;
   const isEvents = useIsEventsScope();
+  const isShengYen = useIsShengYenScope();
 
   // Deep-dive mode: backend suppresses citations to avoid Deep-Dive-in-
   // Deep-Dive loops, so the normal citation/follow-up render path is
@@ -291,6 +293,19 @@ const AssistantMessageCitations: FC = () => {
   if (!citations?.length) return null;
   const adapted = toToolUiCitations(citations);
   if (adapted.length === 0) return null;
+
+  // 聖嚴師父身影 tab: render cited A/V chunks as playable mini-cards
+  // (Audio / YouTube) instead of the text-stacked pill used elsewhere.
+  // Followup suggestions are omitted for this tab — the welcome cards
+  // already steer the next query, and a second row of follow-up chips
+  // on top of media cards reads as noise.
+  if (isShengYen) {
+    return (
+      <div className="mt-4">
+        <MediaCitationList id="sheng-yen-citations" citations={adapted} />
+      </div>
+    );
+  }
 
   // Keyed lookup so `onNavigate` can recover the Deep-Dive identifiers
   // (recordId / sourceType) that tool-ui's SerializableCitation shape
