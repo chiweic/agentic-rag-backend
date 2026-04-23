@@ -138,7 +138,7 @@ const ThreadWelcome: FC = () => {
       : isShengYen
         ? "聖嚴師父身影"
         : isWhatsNew
-          ? "新鮮事"
+          ? "時事禪心"
           : "今天想問什麼？";
   const subheading = isDeepDive
     ? "可針對左側來源內容提出任何問題。"
