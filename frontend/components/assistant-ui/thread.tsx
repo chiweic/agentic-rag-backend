@@ -136,7 +136,7 @@ const ThreadWelcome: FC = () => {
     : isEvents
       ? "找活動?"
       : isShengYen
-        ? "聖嚴師父身影"
+        ? "聖嚴聲影"
         : isWhatsNew
           ? "時事禪心"
           : "今天想問什麼？";

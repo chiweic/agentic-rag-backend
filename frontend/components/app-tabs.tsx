@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { href: "/", label: "對話" },
   { href: "/events", label: "活動推薦" },
-  { href: "/sheng-yen", label: "聖嚴師父身影" },
+  { href: "/sheng-yen", label: "聖嚴聲影" },
   { href: "/whats-new", label: "時事禪心" },
 ] as const;
 
