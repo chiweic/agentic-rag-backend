@@ -60,13 +60,22 @@ export function toToolUiCitations(
     // Prefer a book/source reference over the bare URL host — when
     // available (faguquanji) the book_title is more informative than
     // "ddc.shengyen.org". Fall back to the URL-derived hostname.
-    const domain = first.metadata.book_title || deriveDomain(href);
+    const domain =
+      first.metadata.book_title ||
+      first.metadata.series_name ||
+      deriveDomain(href);
     const author = first.metadata.attribution || undefined;
     const publishedAt = toIsoDatetime(first.metadata.publish_date);
+    // Audio corpus ships `title` as the filename (e.g. "s05-u03-02"),
+    // with the human-readable label in `metadata.unit_name`. Prefer
+    // that when present so in-chat citation cards read like what
+    // users actually see on the welcome grid. Other corpora keep
+    // using the raw `title` field unchanged.
+    const humanTitle = first.metadata.unit_name || first.title;
     result.push({
       id: first.chunk_id,
       href,
-      title: first.title || "Untitled source",
+      title: humanTitle || "Untitled source",
       ...(combinedSnippet ? { snippet: combinedSnippet } : {}),
       ...(domain ? { domain } : {}),
       ...(author ? { author } : {}),

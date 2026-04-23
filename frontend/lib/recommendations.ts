@@ -13,6 +13,15 @@ export type EventRecord = {
     chapter_title?: string;
     category?: string;
     attribution?: string;
+    // Audio corpus only — human-readable hierarchy (series_name ·
+    // unit_name), per-chunk playback URL with #t=<start_s>, and a
+    // full-record duration in seconds.
+    series_name?: string;
+    unit_name?: string;
+    playback_url?: string;
+    duration_s?: number;
+    start_s?: number;
+    end_s?: number;
   } & Record<string, unknown>;
 };
 

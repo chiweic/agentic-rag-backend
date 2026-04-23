@@ -154,6 +154,9 @@ const MediaStarterCard: FC<{
           assetId={card.chunkId}
           src={card.src}
           title={card.title}
+          {...(card.durationMs !== undefined
+            ? { durationMs: card.durationMs }
+            : {})}
           variant="compact"
         />
         {card.description ? (

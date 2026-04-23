@@ -26,6 +26,15 @@ export type Citation = {
     chapter_title?: string;
     category?: string;
     attribution?: string;
+    // Audio corpus (see features_v3.md §1): series_name · unit_name
+    // carry the human-readable label that `title` misses (title is the
+    // filename there), and duration_s / playback_url drive the player.
+    series_name?: string;
+    unit_name?: string;
+    playback_url?: string;
+    duration_s?: number;
+    start_s?: number;
+    end_s?: number;
   };
 };
 

@@ -344,22 +344,34 @@ class RagBotService:
     def _map_hit(hit: "RagBotRetrievalHit") -> RetrievalHit:
         # Forward human-facing references from the chunk's metadata so the
         # frontend can display book/chapter/author context on citation
-        # cards. Only non-empty values are forwarded — these fields are
-        # always present as dict keys in rag_bot's schema but are empty
-        # strings for sources that don't populate them (e.g. the qa
-        # collection has no book_title), and an empty "domain override"
-        # is worse than no override at all.
+        # cards, plus A/V-specific fields (series_name / unit_name /
+        # duration_s / playback_url / start_s / end_s) used by the 聖嚴
+        # 師父身影 tab. Only non-empty values pass through — these keys
+        # always exist in rag_bot's schema but are empty strings for
+        # corpora that don't populate them (e.g. `book_title` is empty
+        # on audio chunks; `series_name` is empty on faguquanji chunks).
         chunk_meta = hit.chunk.metadata or {}
-        refs = {
-            key: value
-            for key, value in (
-                ("book_title", chunk_meta.get("book_title")),
-                ("chapter_title", chunk_meta.get("chapter_title")),
-                ("category", chunk_meta.get("category")),
-                ("attribution", chunk_meta.get("attribution")),
-            )
-            if value
-        }
+        refs: dict[str, Any] = {}
+        for key in (
+            "book_title",
+            "chapter_title",
+            "category",
+            "attribution",
+            "series_name",
+            "unit_name",
+            "playback_url",
+        ):
+            value = chunk_meta.get(key)
+            if value:
+                refs[key] = value
+
+        # Numeric fields — truthy check is wrong here (0.0 is valid for
+        # `start_s` at the head of an audio), so explicit None guard.
+        for key in ("duration_s", "start_s", "end_s"):
+            value = chunk_meta.get(key)
+            if value is not None:
+                refs[key] = value
+
         return RetrievalHit(
             chunk_id=hit.chunk.id,
             text=hit.chunk.text,
