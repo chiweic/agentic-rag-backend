@@ -2,6 +2,7 @@
 
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useLangGraphRuntime } from "@assistant-ui/react-langgraph";
+import { ShengYenScopeContext } from "@/components/assistant-ui/sheng-yen-welcome";
 import { Thread } from "@/components/assistant-ui/thread";
 import { createThread, getThreadState, sendMessage } from "@/lib/chatApi";
 
@@ -26,11 +27,13 @@ const SOURCE_TYPES = ["audio", "video_ddmtv01", "video_ddmtv02"] as const;
 export default function ShengYenPage() {
   const runtime = useShengYenRuntime();
   return (
-    <AssistantRuntimeProvider runtime={runtime}>
-      <main className="h-full">
-        <Thread />
-      </main>
-    </AssistantRuntimeProvider>
+    <ShengYenScopeContext.Provider value={true}>
+      <AssistantRuntimeProvider runtime={runtime}>
+        <main className="h-full">
+          <Thread />
+        </main>
+      </AssistantRuntimeProvider>
+    </ShengYenScopeContext.Provider>
   );
 }
 

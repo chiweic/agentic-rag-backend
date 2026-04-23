@@ -43,6 +43,10 @@ import {
 import { FollowupSuggestions } from "@/components/assistant-ui/followup-suggestions";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { Reasoning } from "@/components/assistant-ui/reasoning";
+import {
+  ShengYenWelcome,
+  useIsShengYenScope,
+} from "@/components/assistant-ui/sheng-yen-welcome";
 import { StarterSuggestions } from "@/components/assistant-ui/starter-suggestions";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
@@ -109,24 +113,30 @@ const ThreadScrollToBottom: FC = () => {
 };
 
 const ThreadWelcome: FC = () => {
-  // Three empty-state flavours share one chrome:
+  // Four empty-state flavours share one chrome:
   //   - Deep Dive overlay (pinned to one source record)
   //   - /events tab (events corpus, recommendation starter cards)
+  //   - /sheng-yen tab (audio + video corpora, A/V recommendation cards)
   //   - default chat (global starter prompts from the QA pool)
   const deepDiveSource = useDeepDiveSource();
   const isDeepDive = deepDiveSource !== null;
   const isEvents = useIsEventsScope();
+  const isShengYen = useIsShengYenScope();
 
   const heading = isDeepDive
     ? "探索這份來源。"
     : isEvents
       ? "找活動?"
-      : "今天想問什麼？";
+      : isShengYen
+        ? "聖嚴師父身影"
+        : "今天想問什麼？";
   const subheading = isDeepDive
     ? "可針對左側來源內容提出任何問題。"
     : isEvents
       ? "從推薦開始,或直接提問。"
-      : "帶點禪味的 AI";
+      : isShengYen
+        ? "選一段影音開始,或直接提問。"
+        : "帶點禪味的 AI";
 
   return (
     <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col">
@@ -144,6 +154,8 @@ const ThreadWelcome: FC = () => {
         <DeepDiveStarters />
       ) : isEvents ? (
         <EventsWelcome />
+      ) : isShengYen ? (
+        <ShengYenWelcome />
       ) : (
         <StarterSuggestions />
       )}
