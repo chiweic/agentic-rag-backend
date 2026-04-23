@@ -108,9 +108,14 @@ def _build_history(state: AgentState) -> list[dict[str, str]]:
 def retrieve(state: AgentState, config: RunnableConfig) -> dict:
     """Run the injected RagService.search and populate retrieval state.
 
-    Deep-dive scope: when `state.scope_record_id` + `scope_source_type`
-    are set, retrieval bypasses semantic search and pulls every chunk
-    from that record instead, pinning the whole source as context.
+    Three modes, checked in order:
+    1. Deep-dive scope (`scope_record_id` + `scope_source_type`): pull
+       every chunk from that single record — whole-source context.
+    2. Multi-source (`source_types` list): fan out semantic search once
+       per corpus and round-robin interleave the hits. Used by the 聖嚴
+       師父身影 tab which pulls from audio + two video corpora.
+    3. Single-source (default): one semantic search against
+       `source_type` or the configured default.
     """
     query = _latest_user_query(state)
     if not query:
@@ -122,7 +127,6 @@ def retrieve(state: AgentState, config: RunnableConfig) -> dict:
         }
 
     service = _rag_service(config)
-    source_type = state.source_type or settings.default_source_type
 
     if state.scope_record_id and state.scope_source_type:
         hits = service.get_record_chunks(
@@ -136,21 +140,46 @@ def retrieve(state: AgentState, config: RunnableConfig) -> dict:
             query[:60],
             len(hits),
         )
-    else:
-        hits = service.search(query, source_type=source_type, limit=settings.retrieval_limit)
-        rerank_marker = (
-            f" | rerank={settings.rerank_candidate_k}->{settings.rerank_top_n}"
-            if settings.rerank_enabled
-            else ""
-        )
+        return {
+            "query": query,
+            "source_type": state.scope_source_type,
+            "retrieval_context": [h.text for h in hits],
+            "retrieved_chunk_ids": [h.chunk_id for h in hits],
+            "citations": [h.model_dump(mode="json") for h in hits],
+        }
+
+    if state.source_types:
+        hits = _multi_source_search(service, query, state.source_types)
         log.info(
-            "retrieve | source=%s | query=%r | %d hits%s",
-            source_type,
+            "retrieve | multi-source | sources=%s | query=%r | %d hits",
+            ",".join(state.source_types),
             query[:60],
             len(hits),
-            rerank_marker,
         )
+        return {
+            "query": query,
+            # Leave source_type blank — the hits span multiple sources.
+            # Downstream generation only cares about the hits themselves.
+            "source_type": None,
+            "retrieval_context": [h.text for h in hits],
+            "retrieved_chunk_ids": [h.chunk_id for h in hits],
+            "citations": [h.model_dump(mode="json") for h in hits],
+        }
 
+    source_type = state.source_type or settings.default_source_type
+    hits = service.search(query, source_type=source_type, limit=settings.retrieval_limit)
+    rerank_marker = (
+        f" | rerank={settings.rerank_candidate_k}->{settings.rerank_top_n}"
+        if settings.rerank_enabled
+        else ""
+    )
+    log.info(
+        "retrieve | source=%s | query=%r | %d hits%s",
+        source_type,
+        query[:60],
+        len(hits),
+        rerank_marker,
+    )
     return {
         "query": query,
         "source_type": source_type,
@@ -158,6 +187,47 @@ def retrieve(state: AgentState, config: RunnableConfig) -> dict:
         "retrieved_chunk_ids": [h.chunk_id for h in hits],
         "citations": [h.model_dump(mode="json") for h in hits],
     }
+
+
+def _multi_source_search(
+    service: "RagService",
+    query: str,
+    source_types: list[str],
+) -> list:
+    """Fan out `service.search` across corpora and round-robin merge.
+
+    Per-source top-k is computed from `settings.retrieval_limit`
+    distributed across the sources (ceiling-divide so a limit of 5 with
+    3 sources still pulls 2 per source rather than 1). The round-robin
+    interleave guarantees every corpus is represented in the top of the
+    list — score-based global sort would otherwise let one corpus's
+    higher score distribution dominate.
+
+    Defensively swallows per-source search failures: one flaky corpus
+    shouldn't 5xx the whole multi-source retrieve.
+    """
+    if not source_types:
+        return []
+
+    per_source_k = max(1, -(-settings.retrieval_limit // len(source_types)))  # ceil div
+    per_source_hits: list[list] = []
+    for source in source_types:
+        try:
+            hits = service.search(query, source_type=source, limit=per_source_k)
+        except Exception:  # noqa: BLE001
+            log.exception("retrieve | multi-source search failed | source=%s", source)
+            per_source_hits.append([])
+            continue
+        per_source_hits.append(list(hits))
+
+    merged: list = []
+    idx = 0
+    while any(idx < len(p) for p in per_source_hits):
+        for per in per_source_hits:
+            if idx < len(per):
+                merged.append(per[idx])
+        idx += 1
+    return merged[: settings.retrieval_limit]
 
 
 # ---------------------------------------------------------------------------

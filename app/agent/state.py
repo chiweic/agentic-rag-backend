@@ -23,6 +23,12 @@ class AgentState(BaseModel):
     # RAG fields (populated by the retrieve node)
     query: str = ""
     source_type: str | None = None
+    # Multi-source retrieval: when set and non-empty, the retrieve node
+    # fans out one semantic search per corpus and round-robin interleaves
+    # the results. Takes precedence over `source_type` (single-source).
+    # Used by the 聖嚴師父身影 tab to pull from audio + two video corpora
+    # simultaneously (see [app/agent/nodes.py] retrieve()).
+    source_types: list[str] | None = None
     # Deep-dive scope: when both are set, the retrieve node pulls every
     # chunk from this record instead of running semantic search — pinning
     # the whole source as context for a focused conversation.
