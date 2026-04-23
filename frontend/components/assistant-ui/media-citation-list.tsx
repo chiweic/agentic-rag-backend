@@ -36,7 +36,7 @@ export const MediaCitationList: FC<Props> = ({ id, citations }) => {
     <div
       data-tool-ui-id={id}
       data-slot="media-citation-list"
-      className="flex flex-col gap-3"
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4"
     >
       {citations.map((c) => (
         <MediaCitationCard key={c.id} citation={c} />
