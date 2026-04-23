@@ -48,6 +48,45 @@ Pick one; document the chosen flow.
 
 **Touchpoints**: [frontend/.env.local](/mnt/data/backend/frontend/.env.local), [frontend/lib/logto.ts](/mnt/data/backend/frontend/lib/logto.ts), [app/core/auth.py](/mnt/data/backend/app/core/auth.py).
 
+#### A3a. Logto reconfig checklist (after spinning up a new Logto instance)
+
+Use this when Logto's DB is reset, the container is recreated, or you move Logto to a new host.
+
+**In the new Logto admin console** (`http://<logto-host>:3301`):
+1. **Applications → Create**: pick "Traditional web" (Next.js). Record the new `App ID` and `App Secret`.
+2. On the new app's settings page:
+   - **Redirect URIs** → `<frontend-base-url>/api/auth/callback` (e.g. `http://192.168.50.253:3000/api/auth/callback`).
+   - **Post sign-out redirect URIs** → `<frontend-base-url>` (plain, no `/api/...`).
+3. **API resources → Create**: identifier any stable string. Keeping `https://api.myapp.local` avoids touching anything code-side.
+4. Back on the Application, under **Permissions**, add the API resource so issued tokens carry the correct `aud`.
+
+**Backend `.env`** (verifies the JWT; see [app/core/auth.py](/mnt/data/backend/app/core/auth.py)):
+
+```
+LOGTO_OIDC_ISSUER=http://<new-logto-host>:<port>/oidc
+LOGTO_OIDC_JWKS_URL=http://<new-logto-host>:<port>/oidc/jwks
+LOGTO_OIDC_AUDIENCE=<API resource identifier from step 3>
+```
+
+**Frontend `frontend/.env.local`** (sign-in flow; see [frontend/lib/logto.ts](/mnt/data/backend/frontend/lib/logto.ts)):
+
+```
+LOGTO_ENDPOINT=http://<new-logto-host>:<port>
+LOGTO_APP_ID=<from step 1>
+LOGTO_APP_SECRET=<from step 1>
+LOGTO_BASE_URL=<where the frontend is actually served; must match the browser URL>
+LOGTO_COOKIE_SECRET=<any random string; changing invalidates existing sessions>
+LOGTO_RESOURCE=<same value as LOGTO_OIDC_AUDIENCE>
+```
+
+**Then**:
+- Restart backend (`uvicorn`) and frontend (`npm run dev`).
+- Clear old `logto_*` cookies in the browser (or use incognito) — otherwise sign-in lands on `/unknown-session`.
+
+**Gotchas**:
+- `LOGTO_BASE_URL` must match the browser's URL for the frontend exactly — if the browser hits the LAN IP but `LOGTO_BASE_URL` is `localhost`, post-sign-in + sign-out redirects break.
+- `LOGTO_RESOURCE` (frontend) and `LOGTO_OIDC_AUDIENCE` (backend) must be the same exact string. Any drift → backend 401s every request.
+
 ### A4. Production env files ⬜
 
 `frontend/.env.local` has `LOGTO_ENDPOINT=http://192.168.50.253:3302` and `LOGTO_BASE_URL=http://192.168.50.253:3100` — LAN-specific. Root `.env` has `MILVUS_HOST=localhost`, `POSTGRES_URI=` (empty), etc.
