@@ -60,6 +60,17 @@ async function authHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
+export type FetchRecommendationsOptions = {
+  limit?: number;
+  /**
+   * rag_bot corpora to pull recommendations from. When omitted the
+   * backend defaults to `["events"]` (features_v2 §4a behaviour). Pass
+   * `["audio", "video_ddmtv01", "video_ddmtv02"]` for the 聖嚴師父身影
+   * tab (features_v3 §1).
+   */
+  sources?: readonly string[];
+};
+
 /**
  * Fetch event recommendations for the current user. Caller owns the
  * loading/error UI — this just throws on non-2xx so the page can
@@ -68,10 +79,14 @@ async function authHeaders(): Promise<Record<string, string>> {
  * a 200 with `status` set).
  */
 export async function fetchRecommendations(
-  limit = 6,
+  opts: FetchRecommendationsOptions = {},
 ): Promise<RecommendationResponse> {
+  const { limit = 6, sources } = opts;
   const url = new URL(`${getApiUrl()}/recommendations`);
   url.searchParams.set("limit", String(limit));
+  if (sources && sources.length > 0) {
+    url.searchParams.set("sources", sources.join(","));
+  }
   const res = await fetch(url.toString(), { headers: await authHeaders() });
   if (!res.ok) {
     throw new Error(`Failed to fetch recommendations: ${res.status}`);
