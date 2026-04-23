@@ -156,6 +156,11 @@ const MediaStarterCard: FC<{
           title={card.title}
           variant="compact"
         />
+        {card.description ? (
+          <p className="line-clamp-3 text-pretty px-1 text-muted-foreground text-sm leading-relaxed">
+            {card.description}
+          </p>
+        ) : null}
         <AskButton onClick={() => onSelect(prompt)} />
       </div>
     );

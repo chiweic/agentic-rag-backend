@@ -19,6 +19,9 @@ export type MediaCard =
       src: string;
       title: string;
       sourceUrl: string;
+      /** Chunk text (e.g. transcript excerpt) rendered beneath the audio
+       * player on welcome cards. */
+      description: string;
     }
   | {
       kind: "youtube";
@@ -42,6 +45,7 @@ export function toMediaCard(record: EventRecord): MediaCard {
       src: record.source_url,
       title,
       sourceUrl: record.source_url,
+      description: (record.text ?? "").trim(),
     };
   }
 
