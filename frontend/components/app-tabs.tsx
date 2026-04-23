@@ -15,6 +15,7 @@ const TABS = [
   { href: "/", label: "對話" },
   { href: "/events", label: "活動推薦" },
   { href: "/sheng-yen", label: "聖嚴師父身影" },
+  { href: "/whats-new", label: "新鮮事" },
 ] as const;
 
 export const AppTabs: FC = () => {

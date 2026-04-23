@@ -53,6 +53,10 @@ import { StarterSuggestions } from "@/components/assistant-ui/starter-suggestion
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import {
+  useIsWhatsNewScope,
+  WhatsNewWelcome,
+} from "@/components/assistant-ui/whats-new-welcome";
+import {
   CitationList,
   type SerializableCitation,
 } from "@/components/tool-ui/citation";
@@ -115,15 +119,17 @@ const ThreadScrollToBottom: FC = () => {
 };
 
 const ThreadWelcome: FC = () => {
-  // Four empty-state flavours share one chrome:
+  // Five empty-state flavours share one chrome:
   //   - Deep Dive overlay (pinned to one source record)
-  //   - /events tab (events corpus, recommendation starter cards)
-  //   - /sheng-yen tab (audio + video corpora, A/V recommendation cards)
+  //   - /events (events corpus, recommendation starter cards)
+  //   - /sheng-yen (audio + video corpora, A/V recommendation cards)
+  //   - /whats-new (news + 5 corpora, headline + dharma-action cards)
   //   - default chat (global starter prompts from the QA pool)
   const deepDiveSource = useDeepDiveSource();
   const isDeepDive = deepDiveSource !== null;
   const isEvents = useIsEventsScope();
   const isShengYen = useIsShengYenScope();
+  const isWhatsNew = useIsWhatsNewScope();
 
   const heading = isDeepDive
     ? "探索這份來源。"
@@ -131,14 +137,18 @@ const ThreadWelcome: FC = () => {
       ? "找活動?"
       : isShengYen
         ? "聖嚴師父身影"
-        : "今天想問什麼？";
+        : isWhatsNew
+          ? "新鮮事"
+          : "今天想問什麼？";
   const subheading = isDeepDive
     ? "可針對左側來源內容提出任何問題。"
     : isEvents
       ? "從推薦開始,或直接提問。"
       : isShengYen
         ? "選一段影音開始,或直接提問。"
-        : "帶點禪味的 AI";
+        : isWhatsNew
+          ? "從今日主題開始,或直接提問。"
+          : "帶點禪味的 AI";
 
   return (
     <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col">
@@ -158,6 +168,8 @@ const ThreadWelcome: FC = () => {
         <EventsWelcome />
       ) : isShengYen ? (
         <ShengYenWelcome />
+      ) : isWhatsNew ? (
+        <WhatsNewWelcome />
       ) : (
         <StarterSuggestions />
       )}
