@@ -289,6 +289,7 @@ const AssistantMessageCitations: FC = () => {
   const isDeepDive = deepDiveSource !== null;
   const isEvents = useIsEventsScope();
   const isShengYen = useIsShengYenScope();
+  const isWhatsNew = useIsWhatsNewScope();
 
   // Deep-dive mode: backend suppresses citations to avoid Deep-Dive-in-
   // Deep-Dive loops, so the normal citation/follow-up render path is
@@ -325,12 +326,14 @@ const AssistantMessageCitations: FC = () => {
   const byId = new Map(adapted.map((c) => [c.id, c]));
   const handleNavigate = (href: string, citation: SerializableCitation) => {
     const full = byId.get(citation.id);
-    // Events scope intentionally bypasses Deep Dive — that flow was
-    // scoped out of this milestone ("deep dive is not needed"). The
-    // /events route also doesn't host a DeepDiveProvider, so
-    // `deepDive` is null there; either way we fall through to the
-    // raw source_url in a new tab.
-    if (!isEvents && deepDive && full?.recordId && full?.sourceType) {
+    // /events and /whats-new intentionally bypass Deep Dive — that
+    // flow was scoped out of those milestones ("deep dive is not
+    // needed" for events; "stacked with links to url" for whats-new,
+    // per features_v4.md §4). Neither route hosts a DeepDiveProvider
+    // today so `deepDive` is null there anyway; either way we fall
+    // through to opening the raw source_url in a new tab.
+    const bypassDeepDive = isEvents || isWhatsNew;
+    if (!bypassDeepDive && deepDive && full?.recordId && full?.sourceType) {
       deepDive.open({
         recordId: full.recordId,
         sourceType: full.sourceType,
