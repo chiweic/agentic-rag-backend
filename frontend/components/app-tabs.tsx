@@ -35,6 +35,17 @@ export const AppTabs: FC = () => {
             key={tab.href}
             href={tab.href}
             aria-current={isActive ? "page" : undefined}
+            // Clicking the active tab reloads the page — cheap
+            // "start a new thread" gesture on the ephemeral tabs
+            // (/events, /sheng-yen, /whats-new) without shipping a
+            // full ThreadList UX. Next.js Link would otherwise
+            // no-op on same-route clicks.
+            onClick={(e) => {
+              if (isActive) {
+                e.preventDefault();
+                window.location.reload();
+              }
+            }}
             className={cn(
               "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
               isActive
