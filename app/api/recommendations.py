@@ -42,6 +42,8 @@ _ALLOWED_SOURCES = frozenset(
         "audio",
         "video_ddmtv01",
         "video_ddmtv02",
+        "video_ddmmedia1321",
+        "news",
         "faguquanji",
     }
 )

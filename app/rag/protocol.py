@@ -71,6 +71,7 @@ class RagService(Protocol):
         *,
         history: list[dict[str, str]] | None = None,
         scope_record_id: str | None = None,
+        variant: str | None = None,
     ) -> RagAnswer:
         """Generate a grounded answer from the retrieved hits.
 
@@ -78,5 +79,11 @@ class RagService(Protocol):
         instruct the LLM to stay strictly inside the pinned source. The
         rag_bot provider prepends a deep-dive prompt prefix; the null
         provider ignores this hint.
+
+        `variant` is an optional style hint chosen by the caller. The
+        rag_bot provider currently understands `"sheng_yen"` and
+        prepends a style directive to the system prompt (non-scope
+        path only). Unknown variants are silently ignored — the
+        default answer style runs.
         """
         ...

@@ -262,6 +262,7 @@ def generate(state: AgentState, config: RunnableConfig) -> dict:
             hits,
             history=history or None,
             scope_record_id=state.scope_record_id,
+            variant=state.generate_variant,
         )
         content_text = answer.text
         # Deep-dive mode: suppress the citations block. The user is already

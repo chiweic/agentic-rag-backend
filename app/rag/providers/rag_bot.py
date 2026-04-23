@@ -193,6 +193,7 @@ class RagBotService:
         *,
         history: list[dict[str, str]] | None = None,
         scope_record_id: str | None = None,
+        variant: str | None = None,
     ) -> RagAnswer:
         from rag_bot.rag.generator import build_rag_prompt, generate_answer
 
@@ -218,8 +219,14 @@ class RagBotService:
         # Always pin the response to Traditional Chinese. The source corpus
         # (faguquanji) is in zh-TW, the UI targets zh-TW, but without an
         # explicit directive the LLM often drifts to Simplified zh-CN
-        # — 業障 becomes 业障, 資料 becomes 资料, etc.
+        # — 業障 becomes 业障, 資料 becomes 资料, etc. The style
+        # variant (e.g. "sheng_yen" for the 新鮮事 tab) is appended
+        # so the model leans into the master's voice without losing
+        # the language directive.
         prompt_prefix = _LANGUAGE_PROMPT_PREFIX
+        variant_directive = _STYLE_DIRECTIVES.get((variant or "").lower())
+        if variant_directive:
+            prompt_prefix = f"{prompt_prefix}{variant_directive}"
 
         if not history:
             generated = generate_answer(
@@ -393,6 +400,18 @@ _LANGUAGE_PROMPT_PREFIX = (
     "terminology used in the provided source — do not convert "
     "characters to Simplified Chinese.\n"
 )
+
+
+# Style variants the rag_bot provider understands. Callers pass
+# `variant="sheng_yen"` through the RagService.generate kwarg; unknown
+# variants are silently ignored (default answer style runs), keeping
+# the surface forgiving while leaving room to add more voices later.
+_STYLE_DIRECTIVES: dict[str, str] = {
+    "sheng_yen": (
+        "以 聖嚴法師的口吻回答,語氣沉穩、慈悲、平實;"
+        "適時引用其著作與開示中的原文或精神,以當代聽眾能理解的語言闡述。\n"
+    ),
+}
 
 
 def _response_to_text(response: Any) -> str:

@@ -99,6 +99,7 @@ class FakeRagService:
         *,
         history: list[dict[str, str]] | None = None,
         scope_record_id: str | None = None,
+        variant: str | None = None,
     ) -> RagAnswer:
         self.generate_calls.append(
             {
@@ -106,6 +107,7 @@ class FakeRagService:
                 "hit_count": len(hits),
                 "history": history,
                 "scope_record_id": scope_record_id,
+                "variant": variant,
             }
         )
         return RagAnswer(

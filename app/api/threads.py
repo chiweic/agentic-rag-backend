@@ -275,6 +275,7 @@ async def run_stream(
     source_types: list[str] | None = None
     scope_record_id = None
     scope_source_type = None
+    generate_variant: str | None = None
     if request.metadata and isinstance(request.metadata, dict):
         source_type = request.metadata.get("source_type")
         raw_sources = request.metadata.get("source_types")
@@ -285,6 +286,9 @@ async def run_stream(
             source_types = candidate or None
         scope_record_id = request.metadata.get("scope_record_id")
         scope_source_type = request.metadata.get("scope_source_type")
+        raw_variant = request.metadata.get("generate_variant")
+        if isinstance(raw_variant, str) and raw_variant:
+            generate_variant = raw_variant
 
     from app.rag import current_rag_service
 
@@ -306,6 +310,7 @@ async def run_stream(
             source_types=source_types,
             scope_record_id=scope_record_id,
             scope_source_type=scope_source_type,
+            generate_variant=generate_variant,
         ),
         media_type="text/event-stream",
         headers={
@@ -343,6 +348,7 @@ async def _stream_events(
     source_types: list[str] | None = None,
     scope_record_id: str | None = None,
     scope_source_type: str | None = None,
+    generate_variant: str | None = None,
 ):
     """Stream in normalized SSE format.
 
@@ -367,6 +373,8 @@ async def _stream_events(
             invoke_input["scope_record_id"] = scope_record_id
         if scope_source_type:
             invoke_input["scope_source_type"] = scope_source_type
+        if generate_variant:
+            invoke_input["generate_variant"] = generate_variant
     else:
         invoke_input = None
 

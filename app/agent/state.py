@@ -29,6 +29,11 @@ class AgentState(BaseModel):
     # Used by the 聖嚴師父身影 tab to pull from audio + two video corpora
     # simultaneously (see [app/agent/nodes.py] retrieve()).
     source_types: list[str] | None = None
+    # Optional answer-style hint for the generate node (forwarded to
+    # RagService.generate's `variant` kwarg). Currently the rag_bot
+    # provider recognises `"sheng_yen"` (used by the 新鮮事 tab);
+    # unknown variants run the default style.
+    generate_variant: str | None = None
     # Deep-dive scope: when both are set, the retrieve node pulls every
     # chunk from this record instead of running semantic search — pinning
     # the whole source as context for a focused conversation.

@@ -407,6 +407,60 @@ async def test_threads_source_types_videos_before_audio(client, fake_rag_service
 
 
 @pytest.mark.asyncio
+async def test_threads_generate_variant_plumbs_to_service(client, fake_rag_service):
+    """metadata.generate_variant reaches the RagService.generate kwarg
+    end-to-end. Used by the 新鮮事 tab (v4 §3) to request Sheng Yen
+    style answers."""
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={
+            "input": {"messages": [{"role": "user", "content": "hi"}]},
+            "metadata": {"generate_variant": "sheng_yen"},
+        },
+    )
+    assert resp.status_code == 200
+
+    assert fake_rag_service.generate_calls[0]["variant"] == "sheng_yen"
+
+
+@pytest.mark.asyncio
+async def test_threads_generate_variant_defaults_to_none(client, fake_rag_service):
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={"input": {"messages": [{"role": "user", "content": "hi"}]}},
+    )
+    assert resp.status_code == 200
+    assert fake_rag_service.generate_calls[0]["variant"] is None
+
+
+@pytest.mark.asyncio
+async def test_recommendations_accepts_news_and_video_ddmmedia1321(client, monkeypatch):
+    """v4 allowlist extension — news + video_ddmmedia1321 pass
+    validation (the 6-corpus set the /whats-new tab uses)."""
+    from app.api import recommendations as recs_module
+
+    async def _fake_summary(queries, *, chat_model=None):
+        return "stubbed"
+
+    async def _fake_collect(user_id, *, days=7, now=None):
+        return ["recent query"]
+
+    monkeypatch.setattr(recs_module, "summarize_interests", _fake_summary)
+    monkeypatch.setattr(recs_module, "collect_recent_queries", _fake_collect)
+
+    resp = await client.get("/recommendations?sources=news,video_ddmmedia1321,faguquanji&limit=6")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] in ("ok", "no_matches")
+
+
+@pytest.mark.asyncio
 async def test_threads_source_types_wins_over_scalar(client, fake_rag_service):
     """When both `source_type` and `source_types` are in metadata, the
     list wins — the single-source scalar path should not fire."""
