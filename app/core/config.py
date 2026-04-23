@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     suggestions_pool_size: int = 30
     suggestions_default_n: int = 4
     suggestions_max_n: int = 10
-    followup_suggestions_n: int = 3
+    followup_suggestions_n: int = 4
 
     # App
     app_env: str = "development"
