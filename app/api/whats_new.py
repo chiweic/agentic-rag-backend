@@ -19,6 +19,7 @@ show different copy.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -59,7 +60,10 @@ async def get_whats_new(
     if feed is None:
         return WhatsNewResponse(status="no_feed", profile="", suggestions=[])
 
-    headlines = feed.get_headlines(limit)
+    # Push sync get_headlines to a worker thread — the static feed is
+    # instant but network-backed providers (google_rss) will block.
+    # Same pattern used for rag_service.search in /recommendations.
+    headlines = await asyncio.to_thread(feed.get_headlines, limit)
     if not headlines:
         return WhatsNewResponse(status="no_news", profile="", suggestions=[])
 

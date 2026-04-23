@@ -52,4 +52,9 @@ def build_news_feed(settings: "Settings") -> NewsFeedProvider:
 
         return StaticSampleFeed()
 
-    raise RuntimeError(f"Unknown NEWS_FEED_PROVIDER={provider!r}. Supported: static.")
+    if provider == "google_rss":
+        from app.news.providers._google_rss import GoogleNewsRssFeed
+
+        return GoogleNewsRssFeed()
+
+    raise RuntimeError(f"Unknown NEWS_FEED_PROVIDER={provider!r}. Supported: static, google_rss.")
