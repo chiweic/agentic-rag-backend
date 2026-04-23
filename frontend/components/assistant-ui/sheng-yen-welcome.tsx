@@ -114,29 +114,14 @@ export const ShengYenWelcome: FC = () => {
     );
   }
 
-  const videoCards = cards.filter((c) => c.kind === "youtube");
-  const otherCards = cards.filter((c) => c.kind !== "youtube");
-
   return (
     <div className="w-full px-4">
       {profile ? <Profile profile={profile} /> : null}
-      {/* Videos render one-per-row so the 16:9 preview gets full
-          reading width. Audio + fallback cards follow in the usual
-          2-col mixed grid. */}
-      {videoCards.length > 0 ? (
-        <div className="mt-3 flex flex-col gap-3 pb-3">
-          {videoCards.map((card) => (
-            <MediaStarterCard key={card.chunkId} card={card} onSelect={send} />
-          ))}
-        </div>
-      ) : null}
-      {otherCards.length > 0 ? (
-        <div className="mt-1 grid gap-3 pb-4 @md:grid-cols-2">
-          {otherCards.map((card) => (
-            <MediaStarterCard key={card.chunkId} card={card} onSelect={send} />
-          ))}
-        </div>
-      ) : null}
+      <div className="mt-3 grid gap-3 pb-4 @md:grid-cols-2">
+        {cards.map((card) => (
+          <MediaStarterCard key={card.chunkId} card={card} onSelect={send} />
+        ))}
+      </div>
     </div>
   );
 };
