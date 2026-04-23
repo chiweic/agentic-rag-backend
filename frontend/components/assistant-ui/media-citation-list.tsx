@@ -63,7 +63,17 @@ const MediaCitationCard: FC<{ citation: DeepDiveableCitation }> = ({
         <div className="line-clamp-2 px-1 text-foreground text-sm font-medium leading-snug">
           {title}
         </div>
-        <Audio id={`sy-cite-${id}`} assetId={id} src={href} variant="compact" />
+        {/* min-w-72 max-w-md on the compact variant overflows narrow
+            grid cells — override with min-w-0 so the player tracks
+            the cell width (audio/audio.tsx:283 in the installed
+            shadcn copy). */}
+        <Audio
+          id={`sy-cite-${id}`}
+          assetId={id}
+          src={href}
+          variant="compact"
+          className="min-w-0 max-w-full"
+        />
         <OpenSourceLink href={href} />
       </div>
     );
