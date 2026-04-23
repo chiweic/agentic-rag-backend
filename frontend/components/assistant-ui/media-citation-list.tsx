@@ -1,9 +1,13 @@
 "use client";
 
-import { AudioLinesIcon, ExternalLinkIcon } from "lucide-react";
-import type { FC } from "react";
+import {
+  AudioLinesIcon,
+  ExternalLinkIcon,
+  PauseIcon,
+  PlayIcon,
+} from "lucide-react";
+import { type FC, useEffect, useRef, useState } from "react";
 import { YouTubeEmbed } from "@/components/assistant-ui/youtube-embed";
-import { Audio } from "@/components/tool-ui/audio";
 import type { DeepDiveableCitation } from "@/lib/citations-adapter";
 
 /**
@@ -51,32 +55,12 @@ const MediaCitationCard: FC<{ citation: DeepDiveableCitation }> = ({
   const { id, href, title, sourceType } = citation;
 
   if (sourceType === "audio") {
-    // Wrap in the same card shell video uses — aspect-video media
-    // area on top (audio has no artwork, so we use a muted gradient
-    // with a waveform icon so audio + video rows share one visual
-    // rhythm) followed by title + compact controls + source link.
-    return (
-      <div className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-background/90 p-2 shadow-sm">
-        <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-muted/40 to-muted/80">
-          <AudioLinesIcon className="size-8 text-muted-foreground/60" />
-        </div>
-        <div className="line-clamp-2 px-1 text-foreground text-sm font-medium leading-snug">
-          {title}
-        </div>
-        {/* min-w-72 max-w-md on the compact variant overflows narrow
-            grid cells — override with min-w-0 so the player tracks
-            the cell width (audio/audio.tsx:283 in the installed
-            shadcn copy). */}
-        <Audio
-          id={`sy-cite-${id}`}
-          assetId={id}
-          src={href}
-          variant="compact"
-          className="min-w-0 max-w-full"
-        />
-        <OpenSourceLink href={href} />
-      </div>
-    );
+    // Match video's card shape: aspect-video placeholder (click =
+    // play/pause) + title + source link. Keeps audio and video cards
+    // at the same height in a 5-col grid — the previous layout had an
+    // extra <Audio> player row that made audio cards noticeably
+    // taller than video cards.
+    return <AudioCitationCard id={id} href={href} title={title} />;
   }
 
   if (sourceType && YOUTUBE_SOURCE_TYPES.has(sourceType)) {
@@ -104,6 +88,65 @@ const MediaCitationCard: FC<{ citation: DeepDiveableCitation }> = ({
       <span className="truncate font-medium text-foreground">{title}</span>
       <ExternalLinkIcon className="size-3.5 shrink-0 text-muted-foreground" />
     </a>
+  );
+};
+
+const AudioCitationCard: FC<{ id: string; href: string; title: string }> = ({
+  id,
+  href,
+  title,
+}) => {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    const el = audioRef.current;
+    if (!el) return;
+    const onPlay = () => setPlaying(true);
+    const onPauseOrEnd = () => setPlaying(false);
+    el.addEventListener("play", onPlay);
+    el.addEventListener("pause", onPauseOrEnd);
+    el.addEventListener("ended", onPauseOrEnd);
+    return () => {
+      el.removeEventListener("play", onPlay);
+      el.removeEventListener("pause", onPauseOrEnd);
+      el.removeEventListener("ended", onPauseOrEnd);
+    };
+  }, []);
+
+  const toggle = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (el.paused) void el.play();
+    else el.pause();
+  };
+
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-background/90 p-2 shadow-sm">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={playing ? `暫停: ${title}` : `播放: ${title}`}
+        className="group relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-muted/40 to-muted/80 transition-colors hover:from-muted/50 hover:to-muted/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      >
+        <AudioLinesIcon className="size-8 text-muted-foreground/60 transition-opacity group-hover:opacity-80" />
+        <span className="absolute inset-0 flex items-center justify-center">
+          <span className="flex size-10 items-center justify-center rounded-full bg-black/60 text-white transition-transform group-hover:scale-105">
+            {playing ? (
+              <PauseIcon className="size-4 fill-current" />
+            ) : (
+              <PlayIcon className="size-4 translate-x-0.5 fill-current" />
+            )}
+          </span>
+        </span>
+      </button>
+      {/* biome-ignore lint/a11y/useMediaCaption: transcripts are ingested as chunk text (used in the reply + welcome description); no captions track exists for rag_bot audio records. */}
+      <audio ref={audioRef} src={href} preload="none" data-cite-id={id} />
+      <div className="line-clamp-2 px-1 text-foreground text-sm font-medium leading-snug">
+        {title}
+      </div>
+      <OpenSourceLink href={href} />
+    </div>
   );
 };
 
