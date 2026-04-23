@@ -21,13 +21,13 @@ export const FollowupSuggestions: FC = () => {
         <SparklesIcon className="size-4" />
         建議延伸問題
       </div>
-      <div className="flex flex-col gap-2">
+      <div className="grid gap-2 @md:grid-cols-4">
         {suggestions.map((suggestion) => (
           <Button
             key={suggestion.id}
             type="button"
             variant="outline"
-            className="h-auto w-full items-start justify-between gap-2 rounded-2xl px-4 py-3 text-left text-sm"
+            className="h-auto w-full items-start justify-between gap-2 rounded-2xl px-3 py-2 text-left text-sm"
             onClick={() => {
               if (aui.thread().getState().isRunning) return;
               const composer = aui.composer();
