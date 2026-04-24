@@ -25,7 +25,7 @@ Internet
   ├── https://auth.changpt.org
   ├── https://logto-admin.changpt.org    → Pi 4 (cloudflared)
   └── https://app.changpt.org             →      → server LAN IP:3000 (docker)
-                                                      └── proxies /api/* → localhost:8081 (uvicorn backend)
+                                                      └── proxies /api/* → host.docker.internal:8082 (uvicorn backend on host)
 ```
 
 Why this shape:
