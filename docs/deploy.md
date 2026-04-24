@@ -16,15 +16,65 @@ Keep items terse; link to commits / PRs / configs as they happen.
 
 Goal: a single URL a small invited audience can hit, with auth and HTTPS. Not production-grade; acceptable for vetted users.
 
-### A1. HTTPS + public hostname ⬜
+### A1. HTTPS + public hostname 🟡
 
-Pick one:
-- **Reverse proxy** on a VPS: Caddy or nginx in front of `uvicorn` (backend) + `next start` (frontend). Caddy gets ACME certs automatically.
-- **PaaS**: Vercel (frontend) + Fly.io / Railway / Render (backend). Easier ops, adds per-vendor config.
+**Architecture chosen:** Cloudflare Tunnel on a Raspberry Pi 4 acts as the single public ingress. The Pi already tunnels Logto at `auth.changpt.org` / `logto-admin.changpt.org`. A new ingress rule points `app.changpt.org` → server's LAN IP:3000 where the Next.js frontend runs in Docker.
 
-Decision needed before the rest of Phase A. Vercel + Fly is probably fastest for a first demo; single-VPS + Caddy is cheapest if there's already an SSH'able box.
+```
+Internet
+  ├── https://auth.changpt.org
+  ├── https://logto-admin.changpt.org    → Pi 4 (cloudflared)
+  └── https://app.changpt.org             →      → server LAN IP:3000 (docker)
+                                                      └── proxies /api/* → localhost:8081 (uvicorn backend)
+```
 
-**Touchpoints**: none in the codebase yet — this is infra. Output is a public URL + the backend URL the frontend should call.
+Why this shape:
+- Pi 4 isn't burdened with Next.js SSR — it just routes.
+- Backend (uvicorn + Milvus-heavy queries) stays on the server, reached only via the Next.js proxy at [frontend/app/api/[..._path]/route.ts](/mnt/data/backend/frontend/app/api/%5B..._path%5D/route.ts). No public port for the backend; no CORS to pin because browsers always hit one origin.
+- One Cloudflare tunnel; no extra certs.
+
+**Pi cloudflared ingress** (`/etc/cloudflared/config.yml` or Zero Trust dashboard):
+```yaml
+ingress:
+  - hostname: auth.changpt.org
+    service: http://logto-core:3001          # docker-compose service on Pi
+  - hostname: logto-admin.changpt.org
+    service: http://logto-console:3002
+  - hostname: app.changpt.org
+    service: http://<SERVER_LAN_IP>:3000     # frontend container on server
+  - service: http_status:404
+```
+
+Pi-local container names only resolve because cloudflared shares their docker network. Cross-host traffic must use the LAN IP + a published port.
+
+**DNS** (Cloudflare zone `changpt.org`): CNAME `app.changpt.org` → `<tunnel-uuid>.cfargotunnel.com`. Same as the existing auth/admin entries.
+
+**Frontend container on the server**: ships as Docker now — `next build` + `next start` from the standalone output (much faster than `npm run dev`). See [frontend/Dockerfile](/mnt/data/backend/frontend/Dockerfile) and [frontend/docker-compose.yml](/mnt/data/backend/frontend/docker-compose.yml). `next.config.ts` sets `output: "standalone"` so the runner image stays at ~150MB.
+
+**Run on the server** once `frontend/.env.local` has production values (see A3a + A4):
+```bash
+cd frontend
+docker compose build
+docker compose up -d
+```
+
+Confirm from the Pi:
+```bash
+pi$ curl -I http://<SERVER_LAN_IP>:3000   # expect 200 / redirect
+```
+
+Then hit `https://app.changpt.org` in a browser.
+
+**Status**:
+- ✅ `app.changpt.org` cloudflared ingress added on the Pi.
+- ✅ `output: "standalone"` + Dockerfile + compose file committed.
+- ⬜ DNS CNAME verified.
+- ⬜ First `docker compose up -d` on the server succeeds.
+- ⬜ Cross-LAN curl from Pi returns non-zero.
+
+**Touchpoints** (now): [frontend/next.config.ts](/mnt/data/backend/frontend/next.config.ts), [frontend/Dockerfile](/mnt/data/backend/frontend/Dockerfile), [frontend/.dockerignore](/mnt/data/backend/frontend/.dockerignore), [frontend/docker-compose.yml](/mnt/data/backend/frontend/docker-compose.yml).
+
+**Trade-off noted**: Pi is a single point of failure — if the tunnel drops, both auth and app go down. Acceptable for the invited demo. Second cloudflared connector on the server is a Phase B upgrade.
 
 ### A2. CORS pinning ⬜
 

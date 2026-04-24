@@ -1,0 +1,27 @@
+# Minimal compose file for running the frontend on the "server" box.
+#
+# Usage:
+#   cd frontend
+#   docker compose build
+#   docker compose up -d
+#
+# Update `frontend/.env.local` with the production values
+# (LOGTO_BASE_URL=https://app.changpt.org, etc.) before `up` — the
+# container reads them at start.
+#
+# The Pi's cloudflared routes `app.changpt.org` → this server's LAN
+# IP on port 3000 (see docs/deploy.md §A1). No ports needed beyond
+# 3000:3000 since backend calls are proxied through the Next.js
+# app itself (frontend/app/api/[..._path]/route.ts → LANGGRAPH_API_URL).
+
+services:
+  frontend:
+    build: .
+    container_name: backend-v2-frontend
+    restart: unless-stopped
+    env_file: .env.local
+    ports:
+      - "3000:3000"
+    # LAN-only: bind to all interfaces so the Pi (and anyone else on
+    # the LAN) can reach it. Cloudflare Tunnel is the only public
+    # ingress path.
