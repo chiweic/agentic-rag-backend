@@ -10,9 +10,13 @@
 # container reads them at start.
 #
 # The Pi's cloudflared routes `app.changpt.org` → this server's LAN
-# IP on port 3000 (see docs/deploy.md §A1). No ports needed beyond
-# 3000:3000 since backend calls are proxied through the Next.js
+# IP on port 3100 (see docs/deploy.md §A1). No ports needed beyond
+# 3100:3000 since backend calls are proxied through the Next.js
 # app itself (frontend/app/api/[..._path]/route.ts → LANGGRAPH_API_URL).
+#
+# Port 3100 (not 3000) because Langfuse already owns :3000 on the
+# server. Container port stays 3000 (Next.js's `next start` default);
+# only the host publish is 3100.
 
 services:
   frontend:
@@ -21,7 +25,7 @@ services:
     restart: unless-stopped
     env_file: .env.local
     ports:
-      - "3000:3000"
+      - "3100:3000"
     # LAN-only: bind to all interfaces so the Pi (and anyone else on
     # the LAN) can reach it. Cloudflare Tunnel is the only public
     # ingress path.

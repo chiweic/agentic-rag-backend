@@ -41,7 +41,7 @@ ingress:
   - hostname: logto-admin.changpt.org
     service: http://logto-console:3002
   - hostname: app.changpt.org
-    service: http://<SERVER_LAN_IP>:3000     # frontend container on server
+    service: http://<SERVER_LAN_IP>:3100     # frontend container on server (3000 is Langfuse)
   - service: http_status:404
 ```
 
@@ -60,7 +60,7 @@ docker compose up -d
 
 Confirm from the Pi:
 ```bash
-pi$ curl -I http://<SERVER_LAN_IP>:3000   # expect 200 / redirect
+pi$ curl -I http://<SERVER_LAN_IP>:3100   # expect 200 / redirect
 ```
 
 Then hit `https://app.changpt.org` in a browser.
