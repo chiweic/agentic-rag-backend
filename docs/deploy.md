@@ -105,7 +105,7 @@ Use this when Logto's DB is reset, the container is recreated, or you move Logto
 **In the new Logto admin console** (`http://<logto-host>:3301`):
 1. **Applications → Create**: pick "Traditional web" (Next.js). Record the new `App ID` and `App Secret`.
 2. On the new app's settings page:
-   - **Redirect URIs** → `<frontend-base-url>/api/auth/callback` (e.g. `http://192.168.50.253:3000/api/auth/callback`).
+   - **Redirect URIs** → `<frontend-base-url>/api/logto/sign-in-callback` (e.g. `https://app.changpt.org/api/logto/sign-in-callback`). Note the path is `/api/logto/sign-in-callback`, NOT `/api/auth/callback` — the actual callback route is at [frontend/app/api/logto/sign-in-callback/route.ts](/mnt/data/backend/frontend/app/api/logto/sign-in-callback/route.ts).
    - **Post sign-out redirect URIs** → `<frontend-base-url>` (plain, no `/api/...`).
 3. **API resources → Create**: identifier any stable string. Keeping `https://api.myapp.local` avoids touching anything code-side.
 4. Back on the Application, under **Permissions**, add the API resource so issued tokens carry the correct `aud`.
