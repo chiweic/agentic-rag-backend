@@ -16,6 +16,43 @@ Keep items terse; link to commits / PRs / configs as they happen.
 
 Goal: a single URL a small invited audience can hit, with auth and HTTPS. Not production-grade; acceptable for vetted users.
 
+### A0. Infra baseline ✅
+
+Five compose stacks run on the server and survive reboots (all `restart: unless-stopped`). Everything else on the host (open-webui, supabase, crawler, embedding, reranker, alchemist, /mnt/data/ duplicate clones, etc.) is **not** part of this project.
+
+| # | Stack | Compose file | Containers | Role | Host ports |
+|---|---|---|---|---|---|
+| 1 | `milvus` | `/home/chiweic/repo/milvus/docker-compose.yml` | etcd, minio, standalone | Vector DB for `rag_bot` retrieval | `19530` |
+| 2 | `tei` | `/home/chiweic/repo/TEI/docker-compose.yml` | tei-embedder (`bge-m3`), tei-reranker (`bge-reranker-large`) | Embeddings + rerank for retrieval | `8080`, `8081` |
+| 3 | `langfuse` | `/home/chiweic/repo/langfuse/docker-compose.yml` + local `docker-compose.override.yml` | web, worker, postgres, redis, clickhouse, minio | LLM tracing / observability | `3000` (web), `9090` (s3); rest on 127.0.0.1 |
+| 4 | `backend` (postgres only) | [docker-compose.yml](/mnt/data/backend/docker-compose.yml) | langgraph-postgres | Thread checkpointer + `thread_metadata` | `127.0.0.1:5434` |
+| 5 | `frontend` | [frontend/docker-compose.yml](/mnt/data/backend/frontend/docker-compose.yml) | backend-v2-frontend (Next.js standalone) | Chat UI + API proxy | `3100` |
+
+**Host-run (not yet dockerized)**
+- Backend FastAPI / uvicorn on `0.0.0.0:8082` — tracked as A6 below.
+- `rag_bot` Python package — `pip install -e /mnt/data/rag_bot`, imported by the backend.
+
+**Hosted elsewhere** (referenced by this project but not on this server)
+- **Logto OSS** (auth) — runs on the Raspberry Pi 4, reached at `auth.changpt.org` / `logto-admin.changpt.org` (see A1).
+- **Cloudflare Tunnel** (public ingress) — also on the Pi.
+
+**Boot order after a cold reboot** (each directory, or let restart policies handle it):
+1. `cd ~/repo/milvus && docker compose up -d`
+2. `cd ~/repo/TEI && docker compose up -d`
+3. `cd ~/repo/langfuse && docker compose up -d`
+4. `cd /mnt/data/backend && docker compose up -d` (langgraph-postgres)
+5. `cd /mnt/data/backend/frontend && docker compose up -d`
+6. Backend uvicorn — still host-run (`uvicorn app.main:app --host 0.0.0.0 --port 8082`); dockerization tracked in A6.
+
+**Cleanup done 2026-04-24**:
+- Added `restart: unless-stopped` to all three milvus services + langgraph-postgres; added `pg_isready` healthcheck to langgraph-postgres; tightened its bind to `127.0.0.1:5434`.
+- Pruned 6 orphan volumes (4 anonymous + `backend_logto-pgdata` + `open-webui_open-webui`).
+- Created shared bridge network `changpt_net` and attached every running container. Each compose file now declares `changpt_net` as `external: true`; Langfuse uses a local `docker-compose.override.yml` (upstream compose stays pristine). Cross-stack DNS works by container name: `milvus-standalone`, `langgraph-postgres`, `langfuse-postgres-1`, `tei-embedder`, etc. Backend container (A6) can drop `host.docker.internal` once attached.
+
+**Open follow-ups**:
+- Langfuse minio still binds `0.0.0.0:9090`; harmless on LAN but wider than needed.
+- After the backend moves into a container on `changpt_net`, the frontend's `LANGGRAPH_API_URL` switches from `http://host.docker.internal:8082` to `http://backend:8082` and `extra_hosts` can be removed.
+
 ### A1. HTTPS + public hostname 🟡
 
 **Architecture chosen:** Cloudflare Tunnel on a Raspberry Pi 4 acts as the single public ingress. The Pi already tunnels Logto at `auth.changpt.org` / `logto-admin.changpt.org`. A new ingress rule points `app.changpt.org` → server's LAN IP:3000 where the Next.js frontend runs in Docker.
@@ -249,10 +286,27 @@ Tracked separately in [docs/rag_bot_events_enrichment.md](/mnt/data/backend/docs
 
 Deferred (estimated 5–8h) — see the plan-mode discussion. Enables revisiting prior `/events`, `/sheng-yen`, `/whats-new` threads instead of the current "click active tab to reset" pattern.
 
+### B8. Global 401 handler — auto-recover stale auth state ⬜
+
+The Next.js middleware checks "do you have a Logto session cookie?" and lets the page render. If the cached access token has since expired, was issued under rotated keys, or was minted for a different audience, the actual API calls surface a confusing runtime error (`Failed to create thread: 401`, `Thread is not yet initialized`) instead of redirecting to sign-in.
+
+Real-world triggers:
+- User idle for >1 h (token TTL expires; refresh usually papers over it but not always).
+- User away for days/weeks → refresh token also expired.
+- We rotate Logto signing keys, change the API resource audience, or backend deploys a breaking auth change → every signed-in user 401s on next load.
+- Logto restart / DB hiccup.
+
+Fix shape: a `handle401(res)` helper imported by [threadListAdapter.ts](/mnt/data/backend/frontend/lib/threadListAdapter.ts), [chatApi.ts](/mnt/data/backend/frontend/lib/chatApi.ts), [feedbackAdapter.ts](/mnt/data/backend/frontend/lib/feedbackAdapter.ts), [recommendations.ts](/mnt/data/backend/frontend/lib/recommendations.ts), [whatsNew.ts](/mnt/data/backend/frontend/lib/whatsNew.ts), [quiz.ts](/mnt/data/backend/frontend/lib/quiz.ts), [sources.ts](/mnt/data/backend/frontend/lib/sources.ts). On any 401, clear local auth state and redirect to `/api/logto/sign-in?redirectUri=<current_path>`. If the Logto session is still alive, silent SSO sends the user through invisibly; otherwise they see the sign-in page once.
+
+Estimated ~30 lines + a one-shot QA pass. Low-risk, contained.
+
+**Touchpoints**: 7 lib files, no backend changes.
+
 ---
 
 ## Suggested order
 
+0. A0 (infra baseline) — ✅ done 2026-04-24.
 1. A1 (HTTPS + hostname) — pick the infra shape.
 2. A5 (Postgres) + A7 (Milvus) + A8 (LLM keys) in parallel — all env-shaped, no code changes.
 3. A2 (CORS) + A4 (env templates) + A6 (rag_bot packaging) — small code changes.

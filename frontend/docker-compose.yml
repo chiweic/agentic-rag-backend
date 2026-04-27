@@ -24,6 +24,7 @@ services:
     container_name: backend-v2-frontend
     restart: unless-stopped
     env_file: .env.local
+    networks: [default, changpt_net]
     ports:
       - "3100:3000"
     # `host.docker.internal` resolves to the Docker host's LAN
@@ -32,8 +33,14 @@ services:
     # backend running on the host (LANGGRAPH_API_URL=
     # http://host.docker.internal:8082). Required explicitly on
     # Linux; Docker Desktop (Mac/Windows) provides it automatically.
+    # Once the backend is containerized on changpt_net, swap to
+    # http://backend:8082 and drop host.docker.internal.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # LAN-only: bind to all interfaces so the Pi (and anyone else on
     # the LAN) can reach it. Cloudflare Tunnel is the only public
     # ingress path.
+
+networks:
+  changpt_net:
+    external: true

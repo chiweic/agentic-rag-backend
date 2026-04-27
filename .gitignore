@@ -21,3 +21,10 @@ mobile-v1/
 mobile-v2/
 exp/
 frontend-v1/
+
+# Developer-local Claude Code MCP server config (paths point to dev box).
+.mcp.json
+
+# Standalone Logto-RN sign-in/out POC (kept on disk for ad-hoc reruns;
+# findings already captured in mobile-v3/README.md "Known limitation").
+mobile-auth-poc/
