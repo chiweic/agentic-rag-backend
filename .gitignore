@@ -17,6 +17,9 @@ node_modules/
 frontend/node_modules/
 frontend/.next/
 frontend/.env.local
+frontend-mobile/node_modules/
+frontend-mobile/.next/
+frontend-mobile/.env.local
 mobile-v1/
 mobile-v2/
 exp/
