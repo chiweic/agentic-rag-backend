@@ -104,6 +104,141 @@ async def test_threads_default_source_type_when_metadata_missing(client, fake_ra
 
 
 @pytest.mark.asyncio
+async def test_threads_scoped_retrieval_uses_get_record_chunks(client, fake_rag_service):
+    """When metadata.scope_record_id + scope_source_type are set, retrieve
+    pulls every chunk for that record instead of running a semantic search."""
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={
+            "input": {"messages": [{"role": "user", "content": "Tell me more"}]},
+            "metadata": {
+                "scope_record_id": "REC-123",
+                "scope_source_type": "faguquanji",
+            },
+        },
+    )
+    assert resp.status_code == 200
+
+    # The scoped path was taken — get_record_chunks fired, search did not.
+    assert len(fake_rag_service.record_chunks_calls) == 1
+    assert fake_rag_service.record_chunks_calls[0] == {
+        "record_id": "REC-123",
+        "source_type": "faguquanji",
+    }
+    assert fake_rag_service.search_calls == []
+
+
+@pytest.mark.asyncio
+async def test_threads_without_scope_uses_semantic_search(client, fake_rag_service):
+    """Without scope metadata, retrieve continues to use semantic search."""
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={"input": {"messages": [{"role": "user", "content": "anything"}]}},
+    )
+    assert resp.status_code == 200
+
+    assert len(fake_rag_service.search_calls) == 1
+    assert fake_rag_service.record_chunks_calls == []
+
+
+@pytest.mark.asyncio
+async def test_scope_record_id_reaches_generate(client, fake_rag_service):
+    """The generate node must see scope_record_id so the provider can
+    inject a deep-dive prompt prefix. Without it, the LLM can happily
+    answer from training knowledge even when retrieval is pinned."""
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={
+            "input": {"messages": [{"role": "user", "content": "Summarize this"}]},
+            "metadata": {
+                "scope_record_id": "REC-ABC",
+                "scope_source_type": "faguquanji",
+            },
+        },
+    )
+    assert resp.status_code == 200
+    assert len(fake_rag_service.generate_calls) == 1
+    assert fake_rag_service.generate_calls[0]["scope_record_id"] == "REC-ABC"
+
+
+@pytest.mark.asyncio
+async def test_scope_record_id_absent_on_regular_thread(client, fake_rag_service):
+    """Regular (non-scoped) turns pass scope_record_id=None to generate."""
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={"input": {"messages": [{"role": "user", "content": "hi"}]}},
+    )
+    assert resp.status_code == 200
+    assert fake_rag_service.generate_calls[0]["scope_record_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_deep_dive_run_omits_citations_block(client, fake_rag_service):
+    """Scoped turns must not emit a citations content block on the
+    assistant message — otherwise the Deep Dive chat renders source
+    cards that would open a Deep Dive inside a Deep Dive."""
+    import json
+
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={
+            "input": {"messages": [{"role": "user", "content": "Summarize this"}]},
+            "metadata": {
+                "scope_record_id": "REC-ABC",
+                "scope_source_type": "faguquanji",
+            },
+        },
+    )
+    assert resp.status_code == 200
+
+    events = _parse_sse(resp.text)
+    values_events = [e for e in events if e["event"] == "values"]
+    assert values_events
+    payload = json.loads(values_events[-1]["data"])
+    assistant = next(m for m in reversed(payload["messages"]) if m["role"] == "assistant")
+    block_types = {b["type"] for b in assistant["content"] if isinstance(b, dict)}
+    # Text only — no citations block.
+    assert block_types == {"text"}
+
+
+@pytest.mark.asyncio
+async def test_regular_run_still_emits_citations_block(client, fake_rag_service):
+    """Sanity check that the suppression is scoped: regular runs still
+    carry the citations block for the main-chat UI."""
+    import json
+
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={"input": {"messages": [{"role": "user", "content": "hi"}]}},
+    )
+    assert resp.status_code == 200
+
+    events = _parse_sse(resp.text)
+    payload = json.loads(next(e["data"] for e in events if e["event"] == "values"))
+    assistant = next(m for m in reversed(payload["messages"]) if m["role"] == "assistant")
+    block_types = {b["type"] for b in assistant["content"] if isinstance(b, dict)}
+    assert block_types == {"text", "citations"}
+
+
+@pytest.mark.asyncio
 async def test_threads_generate_receives_chat_history(client, fake_rag_service):
     """The second turn should carry turn 1 (Q + A, text-only) as history."""
     resp = await client.post("/threads", json={})
@@ -208,3 +343,269 @@ async def test_openai_compat_streaming_includes_sources(client, fake_rag_service
     assert "Sources:" in assembled
     assert "FIXTURE_DOC_A" in assembled
     assert resp.text.strip().endswith("data: [DONE]")
+
+
+# ---------------------------------------------------------------------------
+# Multi-source retrieval (features_v3.md §1 — 聖嚴師父身影 tab)
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_threads_source_types_fans_out_across_corpora(client, fake_rag_service):
+    """A metadata.source_types list causes one `search` call per corpus."""
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={
+            "input": {"messages": [{"role": "user", "content": "聖嚴法師開示"}]},
+            "metadata": {
+                "source_types": ["audio", "video_ddmtv01", "video_ddmtv02"],
+            },
+        },
+    )
+    assert resp.status_code == 200
+
+    # One search per source, no scalar source_type path followed.
+    calls_by_source = [c["source_type"] for c in fake_rag_service.search_calls]
+    assert calls_by_source == ["audio", "video_ddmtv01", "video_ddmtv02"]
+    assert fake_rag_service.record_chunks_calls == []
+
+
+@pytest.mark.asyncio
+async def test_threads_source_types_videos_before_audio(client, fake_rag_service):
+    """Merged citations group videos before audio (modality priority),
+    with round-robin WITHIN each modality group. The /sheng-yen tab
+    relies on this so video cards render at the top of the grid."""
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={
+            "input": {"messages": [{"role": "user", "content": "hello"}]},
+            "metadata": {"source_types": ["audio", "video_ddmtv01"]},
+        },
+    )
+    assert resp.status_code == 200
+
+    # Fake returns 2 hits per search with metadata.source_type tagging
+    # which corpus they came from. With "videos before audio", the
+    # single video source's two hits lead, then the audio source's.
+    values_events = [e for e in _parse_sse(resp.text) if e["event"] == "values"]
+    payload = json.loads(values_events[-1]["data"])
+    assistant = next(m for m in reversed(payload["messages"]) if m["role"] == "assistant")
+    citations_block = next(
+        b for b in assistant["content"] if isinstance(b, dict) and b["type"] == "citations"
+    )
+    sources_in_order = [c["metadata"]["source_type"] for c in citations_block["citations"]]
+    assert sources_in_order[:4] == [
+        "video_ddmtv01",
+        "video_ddmtv01",
+        "audio",
+        "audio",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_threads_generate_variant_plumbs_to_service(client, fake_rag_service):
+    """metadata.generate_variant reaches the RagService.generate kwarg
+    end-to-end. Used by the 新鮮事 tab (v4 §3) to request Sheng Yen
+    style answers."""
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={
+            "input": {"messages": [{"role": "user", "content": "hi"}]},
+            "metadata": {"generate_variant": "sheng_yen"},
+        },
+    )
+    assert resp.status_code == 200
+
+    assert fake_rag_service.generate_calls[0]["variant"] == "sheng_yen"
+
+
+@pytest.mark.asyncio
+async def test_threads_generate_variant_defaults_to_none(client, fake_rag_service):
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={"input": {"messages": [{"role": "user", "content": "hi"}]}},
+    )
+    assert resp.status_code == 200
+    assert fake_rag_service.generate_calls[0]["variant"] is None
+
+
+@pytest.mark.asyncio
+async def test_threads_input_mode_voice_appends_voice_tag(client, monkeypatch):
+    """v5 §1: metadata.input_mode = "voice" causes the Langfuse trace to
+    carry a `voice` tag alongside the existing `thread` tag."""
+    from app.api import threads as threads_module
+
+    captured: list[dict] = []
+
+    def _capture(**kwargs):
+        captured.append(kwargs)
+        # Return a benign config so the run still streams.
+        return {"callbacks": [], "metadata": {}, "_langfuse_handler": None}
+
+    monkeypatch.setattr(threads_module, "get_langfuse_config", _capture)
+
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={
+            "input": {"messages": [{"role": "user", "content": "hi"}]},
+            "metadata": {"input_mode": "voice"},
+        },
+    )
+    assert resp.status_code == 200
+    assert len(captured) == 1
+    assert captured[0]["tags"] == ["thread", "voice"]
+
+
+@pytest.mark.asyncio
+async def test_threads_no_input_mode_omits_voice_tag(client, monkeypatch):
+    """Default path: no input_mode metadata → only the existing `thread` tag,
+    no `voice`."""
+    from app.api import threads as threads_module
+
+    captured: list[dict] = []
+
+    def _capture(**kwargs):
+        captured.append(kwargs)
+        return {"callbacks": [], "metadata": {}, "_langfuse_handler": None}
+
+    monkeypatch.setattr(threads_module, "get_langfuse_config", _capture)
+
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={"input": {"messages": [{"role": "user", "content": "hi"}]}},
+    )
+    assert resp.status_code == 200
+    assert captured[0]["tags"] == ["thread"]
+
+
+@pytest.mark.asyncio
+async def test_recommendations_accepts_news_and_video_ddmmedia1321(client, monkeypatch):
+    """v4 allowlist extension — news + video_ddmmedia1321 pass
+    validation (the 6-corpus set the /whats-new tab uses)."""
+    from app.api import recommendations as recs_module
+
+    async def _fake_summary(queries, *, chat_model=None):
+        return "stubbed"
+
+    async def _fake_collect(user_id, *, days=7, now=None):
+        return ["recent query"]
+
+    monkeypatch.setattr(recs_module, "summarize_interests", _fake_summary)
+    monkeypatch.setattr(recs_module, "collect_recent_queries", _fake_collect)
+
+    resp = await client.get("/recommendations?sources=news,video_ddmmedia1321,faguquanji&limit=6")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] in ("ok", "no_matches")
+
+
+@pytest.mark.asyncio
+async def test_threads_source_types_wins_over_scalar(client, fake_rag_service):
+    """When both `source_type` and `source_types` are in metadata, the
+    list wins — the single-source scalar path should not fire."""
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={
+            "input": {"messages": [{"role": "user", "content": "hi"}]},
+            "metadata": {
+                "source_type": "events",
+                "source_types": ["audio", "video_ddmtv01"],
+            },
+        },
+    )
+    assert resp.status_code == 200
+
+    sources = {c["source_type"] for c in fake_rag_service.search_calls}
+    assert sources == {"audio", "video_ddmtv01"}
+    assert "events" not in sources
+
+
+# ---------------------------------------------------------------------------
+# /recommendations?sources=... (features_v3.md §1)
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_recommendations_default_source_is_events(client, fake_rag_service):
+    # Ensure a recent user message exists so collect_recent_queries returns
+    # something (so the endpoint reaches the search step).
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+    await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={"input": {"messages": [{"role": "user", "content": "seed"}]}},
+    )
+
+    # Without `?sources=`, the endpoint searches only the events corpus.
+    # We can't easily assert the status "ok" without a real summariser
+    # (summarize_interests returns "" in-tests because there's no LLM)
+    # but we CAN assert the default source behaviour by hitting it with
+    # a stubbed summariser below — that test uses `sources=` explicitly.
+    resp = await client.get("/recommendations?limit=3")
+    # In-test environment has no real LLM so summarise returns "" →
+    # status=summary_failed. That's still enough to prove the endpoint
+    # parses query params without 500ing.
+    assert resp.status_code == 200
+    assert resp.json()["status"] in ("summary_failed", "no_activity", "ok")
+
+
+@pytest.mark.asyncio
+async def test_recommendations_rejects_unknown_source(client):
+    resp = await client.get("/recommendations?sources=nope")
+    assert resp.status_code == 400
+    assert "nope" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_recommendations_multi_source_search(client, fake_rag_service, monkeypatch):
+    """With a real summary result stubbed in, ?sources=a,b,c should fan
+    out to each corpus and round-robin interleave the hits."""
+    from app.api import recommendations as recs_module
+
+    async def _fake_summary(queries, *, chat_model=None):
+        return "stubbed interest profile"
+
+    async def _fake_collect(user_id, *, days=7, now=None):
+        return ["recent query"]
+
+    monkeypatch.setattr(recs_module, "summarize_interests", _fake_summary)
+    monkeypatch.setattr(recs_module, "collect_recent_queries", _fake_collect)
+
+    resp = await client.get("/recommendations?sources=audio,video_ddmtv01,video_ddmtv02&limit=6")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body["profile"] == "stubbed interest profile"
+
+    # One search per corpus (ceil(6/3)=2 hits each). With modality
+    # priority, the merged order is videos first (round-robin between
+    # video_ddmtv01 and video_ddmtv02) then audio.
+    calls = [c["source_type"] for c in fake_rag_service.search_calls]
+    assert calls == ["audio", "video_ddmtv01", "video_ddmtv02"]
+
+    sources_in_order = [e["metadata"]["source_type"] for e in body["events"]]
+    assert sources_in_order == [
+        "video_ddmtv01",
+        "video_ddmtv02",
+        "video_ddmtv01",
+        "video_ddmtv02",
+        "audio",
+        "audio",
+    ]

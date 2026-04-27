@@ -1,0 +1,111 @@
+import type { SerializableCitation } from "@/components/tool-ui/citation";
+import type { Citation } from "@/lib/chatApi";
+
+/**
+ * tool-ui's SerializableCitation extended with the backend identifiers
+ * we need to trigger a Deep Dive (whole-record chat). tool-ui ignores
+ * unknown fields at render time, so this is safe to pass directly into
+ * `<Citation {...c}>` while also being readable by our own code.
+ */
+export type DeepDiveableCitation = SerializableCitation & {
+  recordId?: string;
+  sourceType?: string;
+};
+
+/**
+ * Backend emits one citation per retrieved chunk. tool-ui's CitationList
+ * wants one entry per *source* (so the stacked variant shows N unique
+ * sources, not N chunks). This adapter:
+ *
+ * 1. Dedupes backend citations by `chunk_id`.
+ * 2. Groups by `source_url` — one tool-ui Citation per unique URL.
+ * 3. Skips entries with no `source_url`: tool-ui's schema requires a valid
+ *    URL in `href`, and we don't have a sensible fallback target.
+ * 4. Concatenates chunk text into a single snippet per source (capped).
+ * 5. Coerces the backend's `YYYY-MM-DD` publish_date into a valid ISO
+ *    datetime since tool-ui's Zod schema uses `.datetime()`.
+ * 6. Carries the backend's `record_id` + `source_type` alongside tool-ui
+ *    fields so the card's Deep Dive action can kick off scoped chat.
+ */
+const SNIPPET_CHAR_CAP = 400;
+
+export function toToolUiCitations(
+  backendCitations: Citation[],
+): DeepDiveableCitation[] {
+  // Step 1: dedupe by chunk_id.
+  const uniqueByChunk = new Map<string, Citation>();
+  for (const c of backendCitations) {
+    if (!uniqueByChunk.has(c.chunk_id)) {
+      uniqueByChunk.set(c.chunk_id, c);
+    }
+  }
+
+  // Step 2 + 3: group by source_url, skip missing URLs.
+  const bySource = new Map<string, Citation[]>();
+  for (const c of uniqueByChunk.values()) {
+    if (!c.source_url) continue;
+    const list = bySource.get(c.source_url) ?? [];
+    list.push(c);
+    bySource.set(c.source_url, list);
+  }
+
+  const result: DeepDiveableCitation[] = [];
+  for (const [href, group] of bySource) {
+    const first = group[0];
+    const combinedSnippet =
+      group
+        .map((c) => c.text)
+        .join("\n\n")
+        .slice(0, SNIPPET_CHAR_CAP) || undefined;
+    // Prefer a book/source reference over the bare URL host — when
+    // available (faguquanji) the book_title is more informative than
+    // "ddc.shengyen.org". Fall back to the URL-derived hostname.
+    const domain =
+      first.metadata.book_title ||
+      first.metadata.series_name ||
+      deriveDomain(href);
+    const author = first.metadata.attribution || undefined;
+    const publishedAt = toIsoDatetime(first.metadata.publish_date);
+    // Audio corpus ships `title` as the filename (e.g. "s05-u03-02"),
+    // with the human-readable label in `metadata.unit_name`. Prefer
+    // that when present so in-chat citation cards read like what
+    // users actually see on the welcome grid. Other corpora keep
+    // using the raw `title` field unchanged.
+    const humanTitle = first.metadata.unit_name || first.title;
+    result.push({
+      id: first.chunk_id,
+      href,
+      title: humanTitle || "Untitled source",
+      ...(combinedSnippet ? { snippet: combinedSnippet } : {}),
+      ...(domain ? { domain } : {}),
+      ...(author ? { author } : {}),
+      ...(publishedAt ? { publishedAt } : {}),
+      type: "article",
+      ...(first.metadata.record_id
+        ? { recordId: first.metadata.record_id }
+        : {}),
+      sourceType: first.metadata.source_type,
+    });
+  }
+  return result;
+}
+
+const deriveDomain = (href: string): string | undefined => {
+  try {
+    return new URL(href).hostname.replace(/^www\./, "");
+  } catch {
+    return undefined;
+  }
+};
+
+// tool-ui expects ISO 8601 datetime (Zod `.datetime()`). Backend may emit
+// `YYYY-MM-DD`, full ISO, null, or unparseable strings. Expand date-only
+// values to midnight UTC; drop anything we can't parse.
+const toIsoDatetime = (
+  value: string | null | undefined,
+): string | undefined => {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toISOString();
+};

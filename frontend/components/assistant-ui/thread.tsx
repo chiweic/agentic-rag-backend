@@ -9,6 +9,7 @@ import {
   ThreadPrimitive,
   useAuiState,
 } from "@assistant-ui/react";
+import { useAui } from "@assistant-ui/store";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -21,6 +22,8 @@ import {
   PencilIcon,
   RefreshCwIcon,
   SquareIcon,
+  ThumbsDownIcon,
+  ThumbsUpIcon,
 } from "lucide-react";
 import type { FC } from "react";
 import {
@@ -28,15 +31,39 @@ import {
   ComposerAttachments,
   UserMessageAttachments,
 } from "@/components/assistant-ui/attachment";
-import { Citations } from "@/components/assistant-ui/citations";
+import { useDeepDive } from "@/components/assistant-ui/deep-dive-provider";
+import {
+  DeepDiveStarters,
+  useDeepDiveSource,
+} from "@/components/assistant-ui/deep-dive-starters";
+import {
+  EventsWelcome,
+  useIsEventsScope,
+} from "@/components/assistant-ui/events-welcome";
 import { FollowupSuggestions } from "@/components/assistant-ui/followup-suggestions";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
+import { MediaCitationList } from "@/components/assistant-ui/media-citation-list";
 import { Reasoning } from "@/components/assistant-ui/reasoning";
+import { ShengYenFollowups } from "@/components/assistant-ui/sheng-yen-followups";
+import {
+  ShengYenWelcome,
+  useIsShengYenScope,
+} from "@/components/assistant-ui/sheng-yen-welcome";
 import { StarterSuggestions } from "@/components/assistant-ui/starter-suggestions";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { VoiceInputButton } from "@/components/assistant-ui/voice-input-button";
+import {
+  useIsWhatsNewScope,
+  WhatsNewWelcome,
+} from "@/components/assistant-ui/whats-new-welcome";
+import {
+  CitationList,
+  type SerializableCitation,
+} from "@/components/tool-ui/citation";
 import { Button } from "@/components/ui/button";
 import type { Citation } from "@/lib/chatApi";
+import { toToolUiCitations } from "@/lib/citations-adapter";
 import { cn } from "@/lib/utils";
 
 export const Thread: FC = () => {
@@ -93,19 +120,60 @@ const ThreadScrollToBottom: FC = () => {
 };
 
 const ThreadWelcome: FC = () => {
+  // Five empty-state flavours share one chrome:
+  //   - Deep Dive overlay (pinned to one source record)
+  //   - /events (events corpus, recommendation starter cards)
+  //   - /sheng-yen (audio + video corpora, A/V recommendation cards)
+  //   - /whats-new (news + 5 corpora, headline + dharma-action cards)
+  //   - default chat (global starter prompts from the QA pool)
+  const deepDiveSource = useDeepDiveSource();
+  const isDeepDive = deepDiveSource !== null;
+  const isEvents = useIsEventsScope();
+  const isShengYen = useIsShengYenScope();
+  const isWhatsNew = useIsWhatsNewScope();
+
+  const heading = isDeepDive
+    ? "探索這份來源。"
+    : isEvents
+      ? "找活動?"
+      : isShengYen
+        ? "聖嚴聲影"
+        : isWhatsNew
+          ? "時事禪心"
+          : "今天想問什麼？";
+  const subheading = isDeepDive
+    ? "可針對左側來源內容提出任何問題。"
+    : isEvents
+      ? "從推薦開始,或直接提問。"
+      : isShengYen
+        ? "選一段影音開始,或直接提問。"
+        : isWhatsNew
+          ? "從今日主題開始,或直接提問。"
+          : "帶點禪味的 AI";
+
   return (
     <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col">
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
         <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
           <h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both font-semibold text-3xl duration-200">
-            Let&apos;s start with something grounded.
+            {heading}
           </h1>
           <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-muted-foreground text-lg delay-75 duration-200">
-            Pick a starter prompt or ask your own question.
+            {subheading}
           </p>
         </div>
       </div>
-      <StarterSuggestions />
+      {isDeepDive ? (
+        <DeepDiveStarters />
+      ) : isEvents ? (
+        <EventsWelcome />
+      ) : isShengYen ? (
+        <ShengYenWelcome />
+      ) : isWhatsNew ? (
+        <WhatsNewWelcome />
+      ) : (
+        <StarterSuggestions />
+      )}
     </div>
   );
 };
@@ -120,11 +188,11 @@ const Composer: FC = () => {
         >
           <ComposerAttachments />
           <ComposerPrimitive.Input
-            placeholder="Send a message..."
+            placeholder="輸入訊息..."
             className="aui-composer-input max-h-32 min-h-10 w-full resize-none bg-transparent px-1.75 py-1 text-sm outline-none placeholder:text-muted-foreground/80"
             rows={1}
             autoFocus
-            aria-label="Message input"
+            aria-label="訊息輸入"
           />
           <ComposerAction />
         </div>
@@ -137,34 +205,37 @@ const ComposerAction: FC = () => {
   return (
     <div className="aui-composer-action-wrapper relative flex items-center justify-between">
       <ComposerAddAttachment />
-      <AuiIf condition={(s) => !s.thread.isRunning}>
-        <ComposerPrimitive.Send asChild>
-          <TooltipIconButton
-            tooltip="Send message"
-            side="bottom"
-            type="button"
-            variant="default"
-            size="icon"
-            className="aui-composer-send size-8 rounded-full"
-            aria-label="Send message"
-          >
-            <ArrowUpIcon className="aui-composer-send-icon size-4" />
-          </TooltipIconButton>
-        </ComposerPrimitive.Send>
-      </AuiIf>
-      <AuiIf condition={(s) => s.thread.isRunning}>
-        <ComposerPrimitive.Cancel asChild>
-          <Button
-            type="button"
-            variant="default"
-            size="icon"
-            className="aui-composer-cancel size-8 rounded-full"
-            aria-label="Stop generating"
-          >
-            <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
-          </Button>
-        </ComposerPrimitive.Cancel>
-      </AuiIf>
+      <div className="flex items-center gap-1">
+        <AuiIf condition={(s) => !s.thread.isRunning}>
+          <VoiceInputButton />
+          <ComposerPrimitive.Send asChild>
+            <TooltipIconButton
+              tooltip="傳送訊息"
+              side="bottom"
+              type="button"
+              variant="default"
+              size="icon"
+              className="aui-composer-send size-8 rounded-full"
+              aria-label="傳送訊息"
+            >
+              <ArrowUpIcon className="aui-composer-send-icon size-4" />
+            </TooltipIconButton>
+          </ComposerPrimitive.Send>
+        </AuiIf>
+        <AuiIf condition={(s) => s.thread.isRunning}>
+          <ComposerPrimitive.Cancel asChild>
+            <Button
+              type="button"
+              variant="default"
+              size="icon"
+              className="aui-composer-cancel size-8 rounded-full"
+              aria-label="停止生成"
+            >
+              <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
+            </Button>
+          </ComposerPrimitive.Cancel>
+        </AuiIf>
+      </div>
     </div>
   );
 };
@@ -214,15 +285,154 @@ const AssistantMessageCitations: FC = () => {
         ?.citations,
   );
   const isLast = useAuiState((s) => s.message.isLast);
+  const parentThreadId = useAuiState(
+    (s) => s.threadListItem.externalId ?? s.threadListItem.remoteId ?? null,
+  );
+  const deepDive = useDeepDive();
+  const deepDiveSource = useDeepDiveSource();
+  const isDeepDive = deepDiveSource !== null;
+  const isEvents = useIsEventsScope();
+  const isShengYen = useIsShengYenScope();
+  const isWhatsNew = useIsWhatsNewScope();
+
+  // Deep-dive mode: backend suppresses citations to avoid Deep-Dive-in-
+  // Deep-Dive loops, so the normal citation/follow-up render path is
+  // inert. Instead, re-render the 4 source-aware starter prompts under
+  // the latest assistant turn so the user can ratchet through common
+  // exploration questions without retyping.
+  if (isDeepDive) {
+    return isLast ? (
+      <div className="mt-4">
+        <DeepDiveStarters variant="followup" />
+      </div>
+    ) : null;
+  }
 
   if (!citations?.length) return null;
+  const adapted = toToolUiCitations(citations);
+  if (adapted.length === 0) return null;
+
+  // 聖嚴師父身影 tab: render cited A/V chunks as playable mini-cards
+  // (Audio / YouTube) instead of the text-stacked pill used
+  // elsewhere, and follow-ups as a 4-col grid below.
+  if (isShengYen) {
+    return (
+      <div className="mt-4">
+        <MediaCitationList id="sheng-yen-citations" citations={adapted} />
+        {isLast ? <ShengYenFollowups /> : null}
+      </div>
+    );
+  }
+
+  // Keyed lookup so `onNavigate` can recover the Deep-Dive identifiers
+  // (recordId / sourceType) that tool-ui's SerializableCitation shape
+  // doesn't carry.
+  const byId = new Map(adapted.map((c) => [c.id, c]));
+  const handleNavigate = (href: string, citation: SerializableCitation) => {
+    const full = byId.get(citation.id);
+    // /events and /whats-new intentionally bypass Deep Dive — that
+    // flow was scoped out of those milestones ("deep dive is not
+    // needed" for events; "stacked with links to url" for whats-new,
+    // per features_v4.md §4). Neither route hosts a DeepDiveProvider
+    // today so `deepDive` is null there anyway; either way we fall
+    // through to opening the raw source_url in a new tab.
+    const bypassDeepDive = isEvents || isWhatsNew;
+    if (!bypassDeepDive && deepDive && full?.recordId && full?.sourceType) {
+      deepDive.open({
+        recordId: full.recordId,
+        sourceType: full.sourceType,
+        parentThreadId,
+      });
+      return;
+    }
+    window.open(href, "_blank", "noreferrer");
+  };
+
+  // Strip Deep Dive-only fields so the list receives a clean
+  // SerializableCitation[] (tool-ui types it as such).
+  const display: SerializableCitation[] = adapted.map(
+    ({ recordId: _r, sourceType: _s, ...rest }) => rest,
+  );
+
   return (
     <>
-      <Citations citations={citations} />
+      <div className="mt-4">
+        <CitationList
+          id="assistant-citations"
+          variant="stacked"
+          citations={display}
+          onNavigate={handleNavigate}
+        />
+      </div>
       {isLast ? <FollowupSuggestions /> : null}
     </>
   );
 };
+
+/**
+ * Replays the last user message as a new turn.
+ *
+ * Assistant-UI's `ActionBarPrimitive.Reload` requires checkpoint-fork
+ * support on the runtime (via `getCheckpointId`), which in turn needs a
+ * backend `checkpoint_id` passthrough and a way to resolve it. Until
+ * that lands, this custom button does a simple "ask the same question
+ * again" — appends a fresh user turn with the text from the nearest
+ * preceding user message. Shows a duplicate user turn in the
+ * transcript instead of branching, which is the accepted tradeoff.
+ *
+ * Carries over the composer's runConfig so Deep Dive scope metadata
+ * (`scope_record_id` etc.) survives the replay.
+ */
+const RefreshReplayButton: FC = () => {
+  const aui = useAui();
+  const messageId = useAuiState((s) => s.message.id);
+
+  const handleClick = () => {
+    const thread = aui.thread();
+    const state = thread.getState();
+    if (state.isRunning) return;
+
+    const messages = state.messages;
+    const currentIdx = messages.findIndex((m) => m.id === messageId);
+    if (currentIdx < 0) return;
+
+    for (let i = currentIdx - 1; i >= 0; i--) {
+      const candidate = messages[i];
+      if (candidate.role !== "user") continue;
+      const text = extractUserText(candidate.content);
+      if (!text) return;
+      thread.append({
+        content: [{ type: "text", text }],
+        runConfig: aui.composer().getState().runConfig,
+      });
+      return;
+    }
+  };
+
+  return (
+    <TooltipIconButton tooltip="重新產生" onClick={handleClick}>
+      <RefreshCwIcon />
+    </TooltipIconButton>
+  );
+};
+
+function extractUserText(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const part of content) {
+    if (
+      part &&
+      typeof part === "object" &&
+      "type" in part &&
+      (part as { type?: unknown }).type === "text" &&
+      "text" in part &&
+      typeof (part as { text?: unknown }).text === "string"
+    ) {
+      parts.push((part as { text: string }).text);
+    }
+  }
+  return parts.join("\n\n").trim();
+}
 
 const AssistantActionBar: FC = () => {
   return (
@@ -233,7 +443,7 @@ const AssistantActionBar: FC = () => {
       className="aui-assistant-action-bar-root col-start-3 row-start-2 -ml-1 flex gap-1 text-muted-foreground data-floating:absolute data-floating:rounded-md data-floating:border data-floating:bg-background data-floating:p-1 data-floating:shadow-sm"
     >
       <ActionBarPrimitive.Copy asChild>
-        <TooltipIconButton tooltip="Copy">
+        <TooltipIconButton tooltip="複製">
           <AuiIf condition={(s) => s.message.isCopied}>
             <CheckIcon />
           </AuiIf>
@@ -242,15 +452,47 @@ const AssistantActionBar: FC = () => {
           </AuiIf>
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
-      <ActionBarPrimitive.Reload asChild>
-        <TooltipIconButton tooltip="Refresh">
-          <RefreshCwIcon />
+      <RefreshReplayButton />
+      <ActionBarPrimitive.FeedbackPositive asChild>
+        <TooltipIconButton tooltip="有幫助">
+          <AuiIf
+            condition={(s) =>
+              s.message.metadata.submittedFeedback?.type === "positive"
+            }
+          >
+            <ThumbsUpIcon className="fill-current" />
+          </AuiIf>
+          <AuiIf
+            condition={(s) =>
+              s.message.metadata.submittedFeedback?.type !== "positive"
+            }
+          >
+            <ThumbsUpIcon />
+          </AuiIf>
         </TooltipIconButton>
-      </ActionBarPrimitive.Reload>
+      </ActionBarPrimitive.FeedbackPositive>
+      <ActionBarPrimitive.FeedbackNegative asChild>
+        <TooltipIconButton tooltip="沒幫助">
+          <AuiIf
+            condition={(s) =>
+              s.message.metadata.submittedFeedback?.type === "negative"
+            }
+          >
+            <ThumbsDownIcon className="fill-current" />
+          </AuiIf>
+          <AuiIf
+            condition={(s) =>
+              s.message.metadata.submittedFeedback?.type !== "negative"
+            }
+          >
+            <ThumbsDownIcon />
+          </AuiIf>
+        </TooltipIconButton>
+      </ActionBarPrimitive.FeedbackNegative>
       <ActionBarMorePrimitive.Root>
         <ActionBarMorePrimitive.Trigger asChild>
           <TooltipIconButton
-            tooltip="More"
+            tooltip="更多"
             className="data-[state=open]:bg-accent"
           >
             <MoreHorizontalIcon />
@@ -264,7 +506,7 @@ const AssistantActionBar: FC = () => {
           <ActionBarPrimitive.ExportMarkdown asChild>
             <ActionBarMorePrimitive.Item className="aui-action-bar-more-item flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground">
               <DownloadIcon className="size-4" />
-              Export as Markdown
+              匯出為 Markdown
             </ActionBarMorePrimitive.Item>
           </ActionBarPrimitive.ExportMarkdown>
         </ActionBarMorePrimitive.Content>
@@ -303,7 +545,7 @@ const UserActionBar: FC = () => {
       className="aui-user-action-bar-root flex flex-col items-end"
     >
       <ActionBarPrimitive.Edit asChild>
-        <TooltipIconButton tooltip="Edit" className="aui-user-action-edit p-4">
+        <TooltipIconButton tooltip="編輯" className="aui-user-action-edit p-4">
           <PencilIcon />
         </TooltipIconButton>
       </ActionBarPrimitive.Edit>
@@ -322,11 +564,11 @@ const EditComposer: FC = () => {
         <div className="aui-edit-composer-footer mx-3 mb-3 flex items-center gap-2 self-end">
           <ComposerPrimitive.Cancel asChild>
             <Button variant="ghost" size="sm">
-              Cancel
+              取消
             </Button>
           </ComposerPrimitive.Cancel>
           <ComposerPrimitive.Send asChild>
-            <Button size="sm">Update</Button>
+            <Button size="sm">更新</Button>
           </ComposerPrimitive.Send>
         </div>
       </ComposerPrimitive.Root>
@@ -348,7 +590,7 @@ const BranchPicker: FC<BranchPickerPrimitive.Root.Props> = ({
       {...rest}
     >
       <BranchPickerPrimitive.Previous asChild>
-        <TooltipIconButton tooltip="Previous">
+        <TooltipIconButton tooltip="上一則">
           <ChevronLeftIcon />
         </TooltipIconButton>
       </BranchPickerPrimitive.Previous>
@@ -356,7 +598,7 @@ const BranchPicker: FC<BranchPickerPrimitive.Root.Props> = ({
         <BranchPickerPrimitive.Number /> / <BranchPickerPrimitive.Count />
       </span>
       <BranchPickerPrimitive.Next asChild>
-        <TooltipIconButton tooltip="Next">
+        <TooltipIconButton tooltip="下一則">
           <ChevronRightIcon />
         </TooltipIconButton>
       </BranchPickerPrimitive.Next>

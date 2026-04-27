@@ -1,0 +1,238 @@
+"use client";
+
+import { AssistantRuntimeProvider } from "@assistant-ui/react";
+import { useLangGraphRuntime } from "@assistant-ui/react-langgraph";
+import { XIcon } from "lucide-react";
+import { type FC, useEffect, useState } from "react";
+import type { DeepDiveTarget } from "@/components/assistant-ui/deep-dive-provider";
+import { DeepDiveSourceContext } from "@/components/assistant-ui/deep-dive-starters";
+import { Thread } from "@/components/assistant-ui/thread";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable";
+import { createThread, getThreadState, sendMessage } from "@/lib/chatApi";
+import { fetchSourceRecord, type SourceRecord } from "@/lib/sources";
+
+type OverlayProps = {
+  target: DeepDiveTarget;
+  onClose: () => void;
+};
+
+/**
+ * Fullscreen Deep Dive workspace:
+ * - Left pane: full source record (all chunks in order).
+ * - Right pane: a fresh Thread with its own LangGraph runtime bound to
+ *   a new deep-dive thread. Every run sends `scope_record_id` +
+ *   `scope_source_type` metadata so retrieval stays pinned to this
+ *   record.
+ *
+ * Rendered via a React portal from `DeepDiveProvider`, so it sits at
+ * the root of the DOM and covers the main chat UI without being
+ * inside the main assistant runtime's tree.
+ */
+export const DeepDiveOverlay: FC<OverlayProps> = ({ target, onClose }) => {
+  const runtime = useDeepDiveRuntime(target);
+  const [state, setState] = useState<
+    | { status: "loading" }
+    | { status: "error"; message: string }
+    | { status: "ready"; record: SourceRecord }
+  >({ status: "loading" });
+
+  // Fetch the record at the overlay level so both panes — source
+  // viewer on the left AND the Thread's deep-dive welcome on the right
+  // (via DeepDiveSourceContext) — share a single fetch.
+  useEffect(() => {
+    let cancelled = false;
+    setState({ status: "loading" });
+    fetchSourceRecord(target.sourceType, target.recordId)
+      .then((record) => {
+        if (!cancelled) setState({ status: "ready", record });
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setState({
+            status: "error",
+            message: err instanceof Error ? err.message : "Failed to load",
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [target.recordId, target.sourceType]);
+
+  // Esc triggers the provider's close (which routes through browser
+  // history so Back button and Esc behave identically — see
+  // DeepDiveProvider).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const sourceRecord = state.status === "ready" ? state.record : null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-background"
+      role="dialog"
+      aria-modal="true"
+      aria-label="深入探索"
+    >
+      <header className="flex items-center gap-3 border-b px-4 py-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 text-sm">
+          <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-[0.12em]">
+            深入探索
+          </span>
+          {/* Prefer book_title as the identifier on the header — the
+              body content typically opens with the chapter/section
+              title itself, so putting chapter up here doubles up.
+              Fall back to the record title for sources (qa, etc.)
+              that don't carry a book_title. */}
+          <span className="truncate font-medium">
+            {sourceRecord?.book_title ??
+              sourceRecord?.title ??
+              `${target.sourceType} · ${target.recordId}`}
+          </span>
+        </div>
+        {sourceRecord?.source_url ? (
+          <a
+            href={sourceRecord.source_url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-muted-foreground text-xs underline hover:text-foreground"
+          >
+            Open source ↗
+          </a>
+        ) : null}
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex size-8 items-center justify-center rounded-md hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          aria-label="關閉深入探索"
+        >
+          <XIcon className="size-4" />
+        </button>
+      </header>
+      <div className="flex-1 min-h-0">
+        <DeepDiveSourceContext.Provider value={sourceRecord}>
+          <AssistantRuntimeProvider runtime={runtime}>
+            <ResizablePanelGroup orientation="horizontal">
+              <ResizablePanel defaultSize={55} minSize={30}>
+                <SourceContentView state={state} />
+              </ResizablePanel>
+              <ResizableHandle />
+              <ResizablePanel defaultSize={45} minSize={30}>
+                <Thread />
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </AssistantRuntimeProvider>
+        </DeepDiveSourceContext.Provider>
+      </div>
+    </div>
+  );
+};
+
+type SourceState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; record: SourceRecord };
+
+const SourceContentView: FC<{ state: SourceState }> = ({ state }) => {
+  if (state.status === "loading") {
+    return (
+      <div className="flex h-full items-center justify-center p-6 text-muted-foreground text-sm">
+        Loading source…
+      </div>
+    );
+  }
+  if (state.status === "error") {
+    return (
+      <div className="flex h-full items-center justify-center p-6 text-destructive text-sm">
+        {state.message}
+      </div>
+    );
+  }
+
+  const { record } = state;
+  // Identity (book, title, Open source link) lives in the overlay
+  // header; the left pane is body-only. `attribution` / `publish_date`
+  // / a chapter_title-different-from-title still get an inline
+  // byline above the body when they actually add information, but most
+  // faguquanji records will render with just the content.
+  const showChapter =
+    !!record.chapter_title && record.chapter_title !== record.title;
+  const byline = [
+    showChapter ? record.chapter_title : null,
+    record.attribution || null,
+    record.publish_date || null,
+  ].filter(Boolean);
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex-1 overflow-y-auto px-5 py-4 text-sm leading-relaxed">
+        {byline.length > 0 ? (
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
+            {byline.map((part, idx) => (
+              <span key={part}>
+                {idx > 0 ? "· " : ""}
+                {part}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        <div className="whitespace-pre-wrap">
+          {record.chunks.map((chunk) => (
+            <p key={chunk.chunk_id} className="mb-4 last:mb-0">
+              {chunk.text}
+            </p>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Independent runtime for the deep-dive chat. Creates a new thread on
+ * first send (lazy via `initialize()`), tagged with deep-dive metadata
+ * so it's hidden from the main thread list. Streams carry
+ * scope_record_id + scope_source_type so the backend retrieve node
+ * pulls only this record's chunks.
+ */
+const useDeepDiveRuntime = (target: DeepDiveTarget) => {
+  return useLangGraphRuntime({
+    stream: async function* (messages, { initialize, command }) {
+      const { externalId } = await initialize();
+      if (!externalId) throw new Error("Deep dive thread missing");
+      yield* sendMessage({
+        threadId: externalId,
+        messages,
+        command,
+        metadata: {
+          scope_record_id: target.recordId,
+          scope_source_type: target.sourceType,
+        },
+      });
+    },
+    create: async () => {
+      const { thread_id } = await createThread({
+        deep_dive: true,
+        parent_thread_id: target.parentThreadId ?? null,
+        source: {
+          record_id: target.recordId,
+          source_type: target.sourceType,
+        },
+      });
+      return { externalId: thread_id };
+    },
+    load: async (externalId) => {
+      const state = await getThreadState(externalId);
+      return { messages: state.messages };
+    },
+  });
+};

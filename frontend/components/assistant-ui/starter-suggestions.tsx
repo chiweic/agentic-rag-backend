@@ -21,16 +21,10 @@ type StarterSuggestionsState = {
 };
 
 const FALLBACK_SUGGESTIONS: StarterSuggestion[] = [
-  {
-    id: "fallback-1",
-    text: "Give me a thoughtful overview of today's topics.",
-  },
-  { id: "fallback-2", text: "Help me find something interesting to explore." },
-  { id: "fallback-3", text: "Recommend a question I should ask first." },
-  {
-    id: "fallback-4",
-    text: "Show me a grounded example from the knowledge base.",
-  },
+  { id: "fallback-1", text: "請給我今日主題的深度概覽。" },
+  { id: "fallback-2", text: "推薦我一個值得探索的主題。" },
+  { id: "fallback-3", text: "建議我從哪個問題開始。" },
+  { id: "fallback-4", text: "從知識庫中給我一個有依據的範例。" },
 ];
 
 // Retry while the backend pool is still warming up on first boot. Backend
@@ -132,7 +126,7 @@ const StarterSuggestionButton: FC<{ suggestion: StarterSuggestion }> = ({
   return (
     <Button
       variant="ghost"
-      className="h-auto w-full flex-col items-start gap-2 rounded-3xl border border-border/70 bg-background/90 px-4 py-4 text-left text-sm shadow-sm transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:bg-muted/40"
+      className="h-auto w-full flex-col items-start rounded-3xl border border-border/70 bg-background/90 px-4 py-4 text-left text-sm shadow-sm transition-all hover:-translate-y-0.5 hover:border-foreground/20 hover:bg-muted/40"
       onClick={() => {
         if (aui.thread().getState().isRunning) return;
         const composer = aui.composer();
@@ -143,10 +137,6 @@ const StarterSuggestionButton: FC<{ suggestion: StarterSuggestion }> = ({
       }}
       type="button"
     >
-      <span className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-        <SparklesIcon className="size-3" />
-        Starter
-      </span>
       <span className="text-pretty font-medium text-foreground leading-6">
         {suggestion.text}
       </span>
@@ -170,7 +160,6 @@ const StarterSuggestionSkeleton: FC = () => {
           className="relative overflow-hidden rounded-3xl border border-border/70 bg-background/80 px-4 py-4"
         >
           <div className="space-y-3">
-            <div className="h-3 w-20 rounded-full bg-muted" />
             <div className="h-4 w-11/12 rounded-full bg-muted" />
             <div className="h-4 w-8/12 rounded-full bg-muted" />
           </div>
@@ -186,11 +175,9 @@ export const StarterSuggestions: FC = () => {
 
   if (status === "loading" || status === "warming_up") {
     return (
-      <div className="w-full">
-        <div className="mb-3 px-1 text-muted-foreground text-sm">
-          {status === "warming_up"
-            ? "Starter suggestions are warming up..."
-            : "Loading starter suggestions..."}
+      <div className="w-full px-4">
+        <div className="mb-3 text-muted-foreground text-sm">
+          {status === "warming_up" ? "建議預備中…" : "載入建議中…"}
         </div>
         <StarterSuggestionSkeleton />
       </div>
@@ -200,10 +187,10 @@ export const StarterSuggestions: FC = () => {
   if (suggestions.length === 0) return null;
 
   return (
-    <div className="w-full">
-      <div className="mb-3 flex items-center gap-2 px-1 text-muted-foreground text-sm">
+    <div className="w-full px-4">
+      <div className="mb-3 flex items-center gap-2 text-muted-foreground text-sm">
         <SparklesIcon className="size-4" />
-        Try one of these to get started
+        試試以下問題
       </div>
       <div className={cn("grid w-full gap-2 pb-4", "@md:grid-cols-2")}>
         {suggestions.map((suggestion) => (

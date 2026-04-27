@@ -16,11 +16,14 @@ Agentic RAG backend — FastAPI + LangGraph + Langfuse observability. See `docs/
 # Activate venv
 source venv/bin/activate
 
-# Install (editable + dev deps)
+# Install (editable + dev deps + editable rag_bot)
 pip install -e ".[dev]"
+pip install -e /mnt/data/rag_bot[langchain]
 
-# Run server (0.0.0.0 required for Docker clients like Open WebUI)
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8081
+# Run DEV server on :8088 — separate from prod (which is the backend
+# container at :8082, see docs/deploy.md A6). NEVER run dev uvicorn at
+# :8082 — it'll deadlock with the prod container's postgres init.
+uvicorn app.main:app --reload --port 8088
 
 # Lint
 ruff check app/ tests/
@@ -29,6 +32,10 @@ ruff format app/ tests/
 # Test
 pytest
 pytest tests/test_foo.py::test_bar  # single test
+
+# Promote rag_bot + backend changes to prod (gated build + cutover)
+bash scripts/build-backend-image.sh    # gates A/B/C; tags :latest on green
+docker compose up -d backend           # ~5–10 s downtime cutover
 ```
 
 ## Architecture

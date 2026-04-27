@@ -17,7 +17,21 @@ node_modules/
 frontend/node_modules/
 frontend/.next/
 frontend/.env.local
+frontend-mobile/node_modules/
+frontend-mobile/.next/
+frontend-mobile/.env.local
 mobile-v1/
 mobile-v2/
 exp/
 frontend-v1/
+
+# Developer-local Claude Code MCP server config (paths point to dev box).
+.mcp.json
+
+# Standalone Logto-RN sign-in/out POC (kept on disk for ad-hoc reruns;
+# findings already captured in mobile-v3/README.md "Known limitation").
+mobile-auth-poc/
+
+# Backend Docker build context — scripts/build-backend-image.sh snapshots
+# rag_bot here at build time. Ephemeral, recreated fresh each build.
+vendor/

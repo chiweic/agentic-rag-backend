@@ -48,12 +48,42 @@ class RagService(Protocol):
         """Retrieve relevant hits for the query."""
         ...
 
+    def get_record_chunks(
+        self,
+        record_id: str,
+        *,
+        source_type: str,
+    ) -> list[RetrievalHit]:
+        """Return all chunks belonging to a single source record.
+
+        Used by the deep-dive flow to pin a whole source as retrieval
+        context (vs. semantic search across the whole corpus) and by the
+        `GET /sources/{source_type}/{record_id}` endpoint. Chunks are
+        returned in `chunk_index` order so callers can concatenate them
+        for display.
+        """
+        ...
+
     def generate(
         self,
         query: str,
         hits: list[RetrievalHit],
         *,
         history: list[dict[str, str]] | None = None,
+        scope_record_id: str | None = None,
+        variant: str | None = None,
     ) -> RagAnswer:
-        """Generate a grounded answer from the retrieved hits."""
+        """Generate a grounded answer from the retrieved hits.
+
+        When `scope_record_id` is set (deep-dive mode), providers should
+        instruct the LLM to stay strictly inside the pinned source. The
+        rag_bot provider prepends a deep-dive prompt prefix; the null
+        provider ignores this hint.
+
+        `variant` is an optional style hint chosen by the caller. The
+        rag_bot provider currently understands `"sheng_yen"` and
+        prepends a style directive to the system prompt (non-scope
+        path only). Unknown variants are silently ignored — the
+        default answer style runs.
+        """
         ...

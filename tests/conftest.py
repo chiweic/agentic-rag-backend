@@ -16,6 +16,8 @@ from app.core import thread_store
 from app.core.auth import UserClaims, get_current_user
 from app.core.config import settings
 from app.main import app
+from app.news import set_news_feed
+from app.news.providers._static import StaticSampleFeed
 from app.rag import set_rag_service
 from app.rag.protocol import RagAnswer, RagService, RetrievalHit
 from app.suggestions.starter import StarterSuggestionsPool
@@ -38,6 +40,7 @@ class FakeRagService:
     def __init__(self) -> None:
         self.search_calls: list[dict] = []
         self.generate_calls: list[dict] = []
+        self.record_chunks_calls: list[dict] = []
 
     def search(
         self,
@@ -66,14 +69,47 @@ class FakeRagService:
             ),
         ]
 
+    def get_record_chunks(
+        self,
+        record_id: str,
+        *,
+        source_type: str,
+    ) -> list[RetrievalHit]:
+        self.record_chunks_calls.append({"record_id": record_id, "source_type": source_type})
+        return [
+            RetrievalHit(
+                chunk_id=f"FIXTURE_RECORD_CHUNK_{idx}",
+                text=f"record chunk {idx}",
+                title="FIXTURE_RECORD_TITLE",
+                source_url=f"https://example.test/{record_id}",
+                score=None,
+                metadata={
+                    "source_type": source_type,
+                    "record_id": record_id,
+                    "chunk_index": idx,
+                },
+            )
+            for idx in range(2)
+        ]
+
     def generate(
         self,
         query: str,
         hits: list[RetrievalHit],
         *,
         history: list[dict[str, str]] | None = None,
+        scope_record_id: str | None = None,
+        variant: str | None = None,
     ) -> RagAnswer:
-        self.generate_calls.append({"query": query, "hit_count": len(hits), "history": history})
+        self.generate_calls.append(
+            {
+                "query": query,
+                "hit_count": len(hits),
+                "history": history,
+                "scope_record_id": scope_record_id,
+                "variant": variant,
+            }
+        )
         return RagAnswer(
             text=f"{self.MARKER} for query: {query}",
             citations=hits,
@@ -134,9 +170,15 @@ async def _setup_backends():
     await pool.build()
     app.state.starter_pool = pool
 
+    # The 新鮮事 tab reads current_news_feed(); install the static
+    # sample feed so /whats-new-suggestions has something to return
+    # under test (no network).
+    set_news_feed(StaticSampleFeed())
+
     yield
 
     set_rag_service(None)
+    set_news_feed(None)
     _FAKE = None
     app.state.starter_pool = None
 

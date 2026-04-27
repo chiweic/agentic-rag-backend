@@ -106,7 +106,17 @@ def _build_history(state: AgentState) -> list[dict[str, str]]:
 # Node: retrieve — fetch grounding hits for the latest user query
 # ---------------------------------------------------------------------------
 def retrieve(state: AgentState, config: RunnableConfig) -> dict:
-    """Run the injected RagService.search and populate retrieval state."""
+    """Run the injected RagService.search and populate retrieval state.
+
+    Three modes, checked in order:
+    1. Deep-dive scope (`scope_record_id` + `scope_source_type`): pull
+       every chunk from that single record — whole-source context.
+    2. Multi-source (`source_types` list): fan out semantic search once
+       per corpus and round-robin interleave the hits. Used by the 聖嚴
+       師父身影 tab which pulls from audio + two video corpora.
+    3. Single-source (default): one semantic search against
+       `source_type` or the configured default.
+    """
     query = _latest_user_query(state)
     if not query:
         return {
@@ -116,10 +126,48 @@ def retrieve(state: AgentState, config: RunnableConfig) -> dict:
             "citations": [],
         }
 
-    source_type = state.source_type or settings.default_source_type
     service = _rag_service(config)
-    hits = service.search(query, source_type=source_type, limit=settings.retrieval_limit)
 
+    if state.scope_record_id and state.scope_source_type:
+        hits = service.get_record_chunks(
+            state.scope_record_id,
+            source_type=state.scope_source_type,
+        )
+        log.info(
+            "retrieve | scoped | source=%s | record_id=%s | query=%r | %d chunks",
+            state.scope_source_type,
+            state.scope_record_id,
+            query[:60],
+            len(hits),
+        )
+        return {
+            "query": query,
+            "source_type": state.scope_source_type,
+            "retrieval_context": [h.text for h in hits],
+            "retrieved_chunk_ids": [h.chunk_id for h in hits],
+            "citations": [h.model_dump(mode="json") for h in hits],
+        }
+
+    if state.source_types:
+        hits = _multi_source_search(service, query, state.source_types)
+        log.info(
+            "retrieve | multi-source | sources=%s | query=%r | %d hits",
+            ",".join(state.source_types),
+            query[:60],
+            len(hits),
+        )
+        return {
+            "query": query,
+            # Leave source_type blank — the hits span multiple sources.
+            # Downstream generation only cares about the hits themselves.
+            "source_type": None,
+            "retrieval_context": [h.text for h in hits],
+            "retrieved_chunk_ids": [h.chunk_id for h in hits],
+            "citations": [h.model_dump(mode="json") for h in hits],
+        }
+
+    source_type = state.source_type or settings.default_source_type
+    hits = service.search(query, source_type=source_type, limit=settings.retrieval_limit)
     rerank_marker = (
         f" | rerank={settings.rerank_candidate_k}->{settings.rerank_top_n}"
         if settings.rerank_enabled
@@ -132,7 +180,6 @@ def retrieve(state: AgentState, config: RunnableConfig) -> dict:
         len(hits),
         rerank_marker,
     )
-
     return {
         "query": query,
         "source_type": source_type,
@@ -140,6 +187,49 @@ def retrieve(state: AgentState, config: RunnableConfig) -> dict:
         "retrieved_chunk_ids": [h.chunk_id for h in hits],
         "citations": [h.model_dump(mode="json") for h in hits],
     }
+
+
+def _multi_source_search(
+    service: "RagService",
+    query: str,
+    source_types: list[str],
+) -> list:
+    """Fan out `service.search` across corpora and modality-priority merge.
+
+    Per-source top-k is computed from `settings.retrieval_limit`
+    distributed across the sources (ceiling-divide so a limit of 5 with
+    3 sources still pulls 2 per source rather than 1). The merge is
+    `merge_with_modality_priority` — videos before audio, round-robin
+    within each modality.
+
+    Defensively swallows per-source search failures: one flaky corpus
+    shouldn't 5xx the whole multi-source retrieve.
+    """
+    if not source_types:
+        return []
+
+    from app.rag.merge import merge_with_modality_priority
+
+    per_source_k = max(1, -(-settings.retrieval_limit // len(source_types)))  # ceil div
+    per_source_hits: dict[str, list] = {}
+    for source in source_types:
+        try:
+            hits = service.search(query, source_type=source, limit=per_source_k)
+        except Exception:  # noqa: BLE001
+            log.exception("retrieve | multi-source search failed | source=%s", source)
+            per_source_hits[source] = []
+            continue
+        # rag_bot's search does not currently honour `limit` — it can
+        # return more than requested. Truncate here so one corpus
+        # can't fill every slot before the modality-priority merge
+        # has a chance to round-robin across sources / groups.
+        per_source_hits[source] = list(hits)[:per_source_k]
+
+    return merge_with_modality_priority(
+        per_source_hits,
+        source_types,
+        limit=settings.retrieval_limit,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -167,9 +257,22 @@ def generate(state: AgentState, config: RunnableConfig) -> dict:
         history: list[dict[str, str]] = []
     else:
         history = _build_history(state)
-        answer = service.generate(state.query, hits, history=history or None)
+        answer = service.generate(
+            state.query,
+            hits,
+            history=history or None,
+            scope_record_id=state.scope_record_id,
+            variant=state.generate_variant,
+        )
         content_text = answer.text
-        citations_block = [c.model_dump(mode="json") for c in answer.citations]
+        # Deep-dive mode: suppress the citations block. The user is already
+        # pinned to the record via the left pane, so surfacing citation
+        # cards in the chat would let them open a Deep Dive inside a
+        # Deep Dive — which we treat as a loop rather than a feature.
+        if state.scope_record_id:
+            citations_block = []
+        else:
+            citations_block = [c.model_dump(mode="json") for c in answer.citations]
 
     thread_id = (config.get("configurable") or {}).get("thread_id") or "?"
     log.info(

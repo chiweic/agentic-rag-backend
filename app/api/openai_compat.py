@@ -7,7 +7,7 @@ Routes requests through the same LangGraph agent with Langfuse tracing.
 import time
 import uuid
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 
@@ -23,6 +23,7 @@ from app.api.schemas import (
     OpenAIStreamChoice,
     OpenAIUsage,
 )
+from app.core.auth import UserClaims, get_current_user
 from app.core.logging import get_logger
 from app.core.tracing import get_langfuse_config
 
@@ -43,7 +44,10 @@ def _to_langchain_messages(messages: list[OpenAIMessage]):
 
 
 @router.post("/chat/completions")
-async def chat_completions(request: OpenAIChatRequest):
+async def chat_completions(
+    request: OpenAIChatRequest,
+    user: UserClaims = Depends(get_current_user),
+):
     from app.rag import current_rag_service
 
     # Ephemeral thread_id — OpenAI-compat is stateless per request
@@ -51,6 +55,9 @@ async def chat_completions(request: OpenAIChatRequest):
     source_type = None
     if request.metadata and isinstance(request.metadata, dict):
         source_type = request.metadata.get("source_type")
+    # Authenticated identity is the source of truth; `request.user` (OpenAI
+    # schema field) is ignored server-side so clients can't spoof it.
+    user_id = user.user_id
     config = {
         "configurable": {
             "thread_id": thread_id,
@@ -58,7 +65,7 @@ async def chat_completions(request: OpenAIChatRequest):
             "source_type": source_type,
         },
         **get_langfuse_config(
-            user_id=request.user,
+            user_id=user_id,
             trace_name="openai-compat-chat",
         ),
     }
@@ -68,13 +75,13 @@ async def chat_completions(request: OpenAIChatRequest):
         "OpenAI-compat | model=%s stream=%s user=%s | %s",
         request.model,
         request.stream,
-        request.user,
+        user_id,
         user_msg[:80],
     )
 
     state = AgentState(
         messages=_to_langchain_messages(request.messages),
-        user_id=request.user,
+        user_id=user_id,
         source_type=source_type,
     )
 
@@ -213,7 +220,7 @@ async def _stream_response(state: AgentState, config: dict, model: str):
 
 
 @router.get("/models")
-async def list_models():
+async def list_models(user: UserClaims = Depends(get_current_user)):
     """Minimal /v1/models endpoint for client discovery."""
     return {
         "object": "list",

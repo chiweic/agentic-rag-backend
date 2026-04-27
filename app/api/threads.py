@@ -93,8 +93,14 @@ async def create_thread(
 # GET /threads — list all threads (for sidebar)
 # ---------------------------------------------------------------------------
 @router.get("/threads")
-async def list_threads(user: UserClaims = Depends(get_current_user)):
-    threads = await thread_store.list_threads(user_id=user.user_id)
+async def list_threads(
+    user: UserClaims = Depends(get_current_user),
+    include_deep_dive: bool = False,
+):
+    threads = await thread_store.list_threads(
+        user_id=user.user_id,
+        include_deep_dive=include_deep_dive,
+    )
 
     log.info("Listed %d threads for user %s", len(threads), user.user_id)
     # Strip user_id from output
@@ -258,16 +264,38 @@ async def run_stream(
                 title=first_user_msg.content[:80],
             )
 
+    source_type = None
+    source_types: list[str] | None = None
+    scope_record_id = None
+    scope_source_type = None
+    generate_variant: str | None = None
+    input_mode: str | None = None
+    if request.metadata and isinstance(request.metadata, dict):
+        source_type = request.metadata.get("source_type")
+        raw_sources = request.metadata.get("source_types")
+        if isinstance(raw_sources, list):
+            # Keep only string entries; bail on any non-string junk rather
+            # than coercing silently — catches typoed payloads fast.
+            candidate = [s for s in raw_sources if isinstance(s, str) and s]
+            source_types = candidate or None
+        scope_record_id = request.metadata.get("scope_record_id")
+        scope_source_type = request.metadata.get("scope_source_type")
+        raw_variant = request.metadata.get("generate_variant")
+        if isinstance(raw_variant, str) and raw_variant:
+            generate_variant = raw_variant
+        raw_input_mode = request.metadata.get("input_mode")
+        if isinstance(raw_input_mode, str) and raw_input_mode:
+            input_mode = raw_input_mode
+
+    tags = ["thread"]
+    if input_mode == "voice":
+        tags.append("voice")
     langfuse_config = get_langfuse_config(
         user_id=user.user_id,
         session_id=thread_id,
         trace_name="thread-run",
-        tags=["thread"],
+        tags=tags,
     )
-
-    source_type = None
-    if request.metadata and isinstance(request.metadata, dict):
-        source_type = request.metadata.get("source_type")
 
     from app.rag import current_rag_service
 
@@ -281,7 +309,16 @@ async def run_stream(
     }
 
     return StreamingResponse(
-        _stream_events(input_messages, config, request.command, source_type=source_type),
+        _stream_events(
+            input_messages,
+            config,
+            request.command,
+            source_type=source_type,
+            source_types=source_types,
+            scope_record_id=scope_record_id,
+            scope_source_type=scope_source_type,
+            generate_variant=generate_variant,
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -315,6 +352,10 @@ async def _stream_events(
     command: dict | None,
     *,
     source_type: str | None = None,
+    source_types: list[str] | None = None,
+    scope_record_id: str | None = None,
+    scope_source_type: str | None = None,
+    generate_variant: str | None = None,
 ):
     """Stream in normalized SSE format.
 
@@ -333,6 +374,14 @@ async def _stream_events(
         invoke_input: dict | None = {"messages": input_messages}
         if source_type:
             invoke_input["source_type"] = source_type
+        if source_types:
+            invoke_input["source_types"] = source_types
+        if scope_record_id:
+            invoke_input["scope_record_id"] = scope_record_id
+        if scope_source_type:
+            invoke_input["scope_source_type"] = scope_source_type
+        if generate_variant:
+            invoke_input["generate_variant"] = generate_variant
     else:
         invoke_input = None
 

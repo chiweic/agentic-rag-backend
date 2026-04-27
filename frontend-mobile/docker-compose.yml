@@ -1,0 +1,36 @@
+# Compose file for the mobile-web frontend on the "server" box.
+#
+# Usage:
+#   cd frontend-mobile
+#   docker compose build
+#   docker compose up -d
+#
+# Update `frontend-mobile/.env.local` with production values before `up`:
+#   LOGTO_BASE_URL=https://m.changpt.org
+#   LANGGRAPH_API_URL=http://host.docker.internal:8082
+# (NO QUOTES — see .env.example.)
+#
+# The Pi's cloudflared routes `m.changpt.org` → this server's LAN IP on
+# host port 3200. Mirrors frontend/docker-compose.yml — only the published
+# port and container name differ (3200 vs 3100; -frontend-mobile vs
+# -frontend).
+
+services:
+  frontend-mobile:
+    build: .
+    container_name: backend-v2-frontend-mobile
+    restart: unless-stopped
+    env_file: .env.local
+    networks: [default, changpt_net]
+    ports:
+      - "3200:3000"
+    # host.docker.internal lets the Next.js proxy at
+    # app/api/[..._path]/route.ts reach the backend container on the host's
+    # LAN gateway. Same pattern as frontend/. When backend joins changpt_net,
+    # we can swap LANGGRAPH_API_URL to http://backend:8082 and drop this.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  changpt_net:
+    external: true

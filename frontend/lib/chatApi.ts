@@ -19,6 +19,22 @@ export type Citation = {
     record_id?: string;
     chunk_index?: number;
     publish_date?: string | null;
+    // Human-facing references forwarded from the rag_bot chunk metadata.
+    // Present when the source populates them (faguquanji has
+    // book_title/chapter_title; qa does not).
+    book_title?: string;
+    chapter_title?: string;
+    category?: string;
+    attribution?: string;
+    // Audio corpus (see features_v3.md §1): series_name · unit_name
+    // carry the human-readable label that `title` misses (title is the
+    // filename there), and duration_s / playback_url drive the player.
+    series_name?: string;
+    unit_name?: string;
+    playback_url?: string;
+    duration_s?: number;
+    start_s?: number;
+    end_s?: number;
   };
 };
 
@@ -128,11 +144,12 @@ function toLangChainMessage(msg: BackendMessage): LangChainMessage {
   } as LangChainMessage;
 }
 
-export const createThread = async () => {
+export const createThread = async (metadata?: Record<string, unknown>) => {
+  const body = metadata ? JSON.stringify({ metadata }) : JSON.stringify({});
   const res = await fetch(`${getApiUrl()}/threads`, {
     method: "POST",
     headers: await getAuthHeaders(),
-    body: JSON.stringify({}),
+    body,
   });
   if (!res.ok) throw new Error(`Failed to create thread: ${res.status}`);
   return res.json();
@@ -163,12 +180,18 @@ export async function* sendMessage(params: {
   threadId: string;
   messages?: LangChainMessage[];
   command?: LangGraphCommand | undefined;
+  // Passthrough to backend: source_type override, deep-dive scope
+  // (`scope_record_id` + `scope_source_type`), etc.
+  metadata?: Record<string, unknown>;
 }): AsyncGenerator<LangGraphMessagesEvent<LangChainMessage>> {
-  const body = {
+  const body: Record<string, unknown> = {
     input: params.messages?.length ? { messages: params.messages } : null,
     command: params.command,
     streamMode: ["messages", "updates"],
   };
+  if (params.metadata && Object.keys(params.metadata).length > 0) {
+    body.metadata = params.metadata;
+  }
 
   const res = await fetch(
     `${getApiUrl()}/threads/${params.threadId}/runs/stream`,

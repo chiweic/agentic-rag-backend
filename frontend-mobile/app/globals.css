@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+/* Mobile-first defaults — body uses dvh so it tracks the actual visible
+   viewport height (handles iOS Safari's URL bar collapse correctly). */
+html, body { height: 100dvh; }
+body { @apply bg-white text-zinc-900 antialiased; }
+
+/* Minimal markdown styles for assistant bubbles. Hand-rolled because we
+   don't pull in @tailwindcss/typography — only need the small subset of
+   markdown the model produces (paragraphs, lists, headings, inline code,
+   links, bold/italic). */
+.markdown p { @apply my-1; }
+.markdown p:first-child { @apply mt-0; }
+.markdown p:last-child { @apply mb-0; }
+.markdown ul, .markdown ol { @apply my-1 pl-5; }
+.markdown ul { @apply list-disc; }
+.markdown ol { @apply list-decimal; }
+.markdown li { @apply my-0.5; }
+.markdown h1, .markdown h2, .markdown h3, .markdown h4 { @apply my-2 font-semibold; }
+.markdown h1 { @apply text-base; }
+.markdown h2, .markdown h3, .markdown h4 { @apply text-sm; }
+.markdown strong { @apply font-semibold; }
+.markdown em { @apply italic; }
+.markdown code { @apply rounded bg-zinc-200 px-1 py-0.5 font-mono text-xs; }
+.markdown pre { @apply my-2 overflow-x-auto rounded bg-zinc-200 p-2 font-mono text-xs; }
+.markdown pre code { @apply bg-transparent p-0; }
+.markdown blockquote { @apply my-2 border-l-2 border-zinc-300 pl-3 text-zinc-600; }

@@ -63,12 +63,24 @@ class Settings(BaseSettings):
     max_message_window: int = 20  # messages sent to LLM (full history stays in DB)
     max_threads_per_user: int = 100  # 0 = unlimited
 
+    # News feed (features_v4) — drives the 時事禪心 tab welcome
+    # suggestions. "static" returns a fixed sample set so the feature
+    # works end-to-end in dev/CI without network calls. "google_rss"
+    # polls the public Google News RSS for Traditional-Chinese Taiwan
+    # top news.
+    news_feed_provider: Literal["static", "google_rss"] = "static"
+    # Per-process cache TTL (seconds) for network-backed providers.
+    # Default 24h — top news doesn't turn over fast enough to justify
+    # hammering Google, and we want to be a good citizen of their
+    # public RSS endpoint. Tune down for more freshness.
+    news_feed_cache_ttl_seconds: int = 86400
+
     # Suggestions (features_v1) — starter + follow-up prompt generation
     suggestions_qa_collection: str = ""  # empty = auto-detect latest rag_bot_qa_*
     suggestions_pool_size: int = 30
     suggestions_default_n: int = 4
     suggestions_max_n: int = 10
-    followup_suggestions_n: int = 3
+    followup_suggestions_n: int = 4
 
     # App
     app_env: str = "development"

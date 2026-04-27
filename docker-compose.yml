@@ -2,50 +2,64 @@ services:
   postgres:
     image: postgres:17
     container_name: langgraph-postgres
+    restart: unless-stopped
+    networks: [default, changpt_net]
     environment:
       POSTGRES_USER: langgraph
       POSTGRES_PASSWORD: langgraph
       POSTGRES_DB: langgraph
     ports:
-      - "5434:5432"
+      - "127.0.0.1:5434:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-
-  logto-db:
-    image: postgres:17
-    container_name: logto-postgres
-    environment:
-      POSTGRES_USER: logto
-      POSTGRES_PASSWORD: logto
-      POSTGRES_DB: logto
-    ports:
-      - "5435:5432"
-    volumes:
-      - logto-pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U logto"]
+      test: ["CMD-SHELL", "pg_isready -U langgraph -d langgraph"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  logto:
-    image: svhd/logto:latest
-    container_name: logto
+  backend:
+    # Image is built+tagged by scripts/build-backend-image.sh after the Tier 1
+    # promotion gates pass. Compose does NOT build it (build: would skip the
+    # gates). Always references :latest, which the script only updates on a
+    # green build; rollback is `docker tag backend-v2:previous backend-v2:latest`
+    # then `docker compose up -d backend`.
+    image: backend-v2:latest
+    container_name: backend-v2
+    restart: unless-stopped
     depends_on:
-      logto-db:
+      postgres:
         condition: service_healthy
-    entrypoint: ["sh", "-c", "npm run cli db seed -- --swe && npm start"]
-    environment:
-      TRUST_PROXY_HEADER: "1"
-      DB_URL: postgres://logto:logto@logto-db:5432/logto
-      PORT: "3302"
-      ADMIN_PORT: "3301"
-      ENDPOINT: http://localhost:3302
-      ADMIN_ENDPOINT: http://localhost:3301
+    # Joined to changpt_net so the backend reaches milvus / TEI / langfuse /
+    # langgraph-postgres by their service names. `default` keeps it on
+    # backend's own compose network too.
+    networks: [default, changpt_net]
     ports:
-      - "3301:3301"
-      - "3302:3302"
+      # Same port the frontend container's LANGGRAPH_API_URL points at via
+      # host.docker.internal. Don't change without also updating
+      # frontend/docker-compose.yml + frontend/.env.local.
+      - "8082:8082"
+    env_file: .env
+    environment:
+      # Override host-relative URLs in .env with changpt_net service names.
+      # The .env is shared with the local-dev uvicorn workflow at :8088,
+      # which still uses localhost references — these container-only values
+      # live HERE so .env doesn't have to fork.
+      POSTGRES_URI: postgresql://langgraph:langgraph@langgraph-postgres:5432/langgraph
+      MILVUS_HOST: milvus-standalone
+      EMBEDDING_BASE_URL: http://tei-embedder:80
+      RERANK_ENDPOINT: http://tei-reranker:80/rerank
+      LANGFUSE_BASE_URL: http://langfuse-langfuse-web-1:3000
+      DATA_ROOT: /data
+    volumes:
+      # rag_bot data corpus (~840 MB) — too big for the image, bind-mounted
+      # read-only. Updated out-of-band by rag_bot's data ingestion pipeline.
+      - /mnt/data/rag_bot/data:/data:ro
 
 volumes:
   pgdata:
-  logto-pgdata:
+
+networks:
+  changpt_net:
+    external: true
+

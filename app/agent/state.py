@@ -23,6 +23,22 @@ class AgentState(BaseModel):
     # RAG fields (populated by the retrieve node)
     query: str = ""
     source_type: str | None = None
+    # Multi-source retrieval: when set and non-empty, the retrieve node
+    # fans out one semantic search per corpus and round-robin interleaves
+    # the results. Takes precedence over `source_type` (single-source).
+    # Used by the 聖嚴師父身影 tab to pull from audio + two video corpora
+    # simultaneously (see [app/agent/nodes.py] retrieve()).
+    source_types: list[str] | None = None
+    # Optional answer-style hint for the generate node (forwarded to
+    # RagService.generate's `variant` kwarg). Currently the rag_bot
+    # provider recognises `"sheng_yen"` (used by the 新鮮事 tab);
+    # unknown variants run the default style.
+    generate_variant: str | None = None
+    # Deep-dive scope: when both are set, the retrieve node pulls every
+    # chunk from this record instead of running semantic search — pinning
+    # the whole source as context for a focused conversation.
+    scope_record_id: str | None = None
+    scope_source_type: str | None = None
     retrieval_context: list[str] = Field(default_factory=list)
     retrieved_chunk_ids: list[str] = Field(default_factory=list)
     citations: list[dict[str, Any]] = Field(default_factory=list)

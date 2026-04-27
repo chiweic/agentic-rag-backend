@@ -23,12 +23,21 @@ class NullRagService:
     ) -> list[RetrievalHit]:
         return []
 
+    def get_record_chunks(
+        self,
+        record_id: str,
+        *,
+        source_type: str,
+    ) -> list[RetrievalHit]:
+        return []
+
     def generate(
         self,
         query: str,
         hits: list[RetrievalHit],
         *,
         history: list[dict[str, str]] | None = None,
+        scope_record_id: str | None = None,
     ) -> RagAnswer:
         return RagAnswer(
             text=("(no RAG provider configured) — echoing query: " f"{query}"),
