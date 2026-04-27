@@ -21,3 +21,9 @@ mobile-v1/
 mobile-v2/
 exp/
 frontend-v1/
+
+# Partner API kit guide. Carries M2M client_id/client_secret in plaintext
+# for the partner handoff (the kit is emailed as a zip alongside the
+# examples/partner_api/ scripts). Keeping it out of git so credentials
+# stay local-only. The doc itself lives on disk at docs/partner_api.md.
+docs/partner_api.md
