@@ -113,6 +113,53 @@ Then hit `https://app.changpt.org` in a browser.
 
 **Trade-off noted**: Pi is a single point of failure — if the tunnel drops, both auth and app go down. Acceptable for the invited demo. Second cloudflared connector on the server is a Phase B upgrade.
 
+### A1b. Install-free mobile-web client at `m.changpt.org` ✅
+
+A third client surface, mobile-first and install-free. Same Cloudflare Tunnel ingress as A1; same Logto application (additive Redirect URI registration); independent Next.js project at [frontend-mobile/](/mnt/data/backend/frontend-mobile) so the desktop app at `app.changpt.org` is untouched.
+
+```
+Internet
+  └── https://m.changpt.org → Pi 4 cloudflared → server LAN IP:3200 (docker)
+                                                      └── proxies /api/* → host.docker.internal:8082 (backend container)
+```
+
+**Why a separate project, not another route on `app.changpt.org`**: the desktop app is built around assistant-ui's desktop-shaped primitives (sidebar threadlist, hover-only patterns). Mobile-web ships a hand-rolled chat UI (~6 components, no `@assistant-ui/*`), focused on the hero flow only — sign in, ask, read grounded answer with citation pills, repeat. No Deep Dive, no companion tabs (`/events`, `/sheng-yen`, `/whats-new`), no audio/video playback, no voice. Independent SHA, independent deploy, no cross-pollination risk.
+
+**Pi cloudflared ingress** (add to existing config, **above** the `http_status:404` catch-all):
+```yaml
+- hostname: m.changpt.org
+  service: http://<SERVER_LAN_IP>:3200    # frontend-mobile container on server
+```
+
+**DNS**: CNAME `m.changpt.org` → `<same-tunnel-uuid>.cfargotunnel.com` — same target as the existing `app`/`auth` entries.
+
+**Logto admin** (existing web app, additive — do not touch existing entries):
+- Redirect URIs: add `https://m.changpt.org/api/logto/sign-in-callback`
+- Post sign-out redirect URIs: add `https://m.changpt.org`
+
+**Run on the server** (once `frontend-mobile/.env.local` is filled in — see [.env.example](/mnt/data/backend/frontend-mobile/.env.example), and observe the **NO QUOTES** rule that bit Langfuse):
+```bash
+cd frontend-mobile
+docker compose build
+docker compose up -d                          # publishes :3200 on the host
+```
+
+Smoke from anywhere on the internet:
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' https://m.changpt.org/                  # 307 → /api/auth/sign-in
+curl -sS -o /dev/null -w '%{http_code}\n' https://m.changpt.org/api/auth/sign-in  # 307 → auth.changpt.org/oidc/auth
+curl -sS -o /dev/null -w '%{http_code}\n' https://app.changpt.org/api/health      # 200 (untouched)
+```
+
+**Touchpoints**: [frontend-mobile/Dockerfile](/mnt/data/backend/frontend-mobile/Dockerfile), [frontend-mobile/docker-compose.yml](/mnt/data/backend/frontend-mobile/docker-compose.yml), [frontend-mobile/.env.example](/mnt/data/backend/frontend-mobile/.env.example).
+
+**Open follow-ups** (not blocking shipped state):
+- In-chat follow-up suggestion chips. Backend already emits the SSE `suggestions/final` event after each assistant turn; mobile silently discards it. Desktop wires it via [frontend/lib/followupSuggestions.ts](/mnt/data/backend/frontend/lib/followupSuggestions.ts) + `<FollowupSuggestions>`. Mobile shape would be a horizontal pill row below the last assistant bubble; tap = send. ~50 lines. Distinct from the welcome-screen starter cards (those are tied to companion tabs and deliberately deferred).
+- Voice input (~1 day; Web Speech in Chrome Android works; defer until users ask).
+- Companion tabs on mobile-web (most likely `/whats-new` first — small UI surface).
+- Promotion gates analogous to `scripts/build-backend-image.sh` once the cadence justifies it.
+- B8 global 401 handler applies to `m.changpt.org` too; share or duplicate the helper.
+
 ### A2. CORS pinning ⬜
 
 Today [app/main.py:138](/mnt/data/backend/app/main.py) has:
