@@ -5,6 +5,7 @@ import { useLangGraphRuntime } from "@assistant-ui/react-langgraph";
 import { Thread } from "@/components/assistant-ui/thread";
 import { WhatsNewScopeContext } from "@/components/assistant-ui/whats-new-welcome";
 import { createThread, getThreadState, sendMessage } from "@/lib/chatApi";
+import { consumeVoiceInputFlag } from "@/lib/voiceInput";
 
 /**
  * `/whats-new` — 新鮮事 Thread chat (features_v4.md §1).
@@ -49,14 +50,16 @@ const useWhatsNewRuntime = () => {
     stream: async function* (messages, { initialize, command }) {
       const { externalId } = await initialize();
       if (!externalId) throw new Error("Whats-new thread missing");
+      const metadata: Record<string, unknown> = {
+        source_types: [...SOURCE_TYPES],
+        generate_variant: "sheng_yen",
+      };
+      if (consumeVoiceInputFlag()) metadata.input_mode = "voice";
       yield* sendMessage({
         threadId: externalId,
         messages,
         command,
-        metadata: {
-          source_types: [...SOURCE_TYPES],
-          generate_variant: "sheng_yen",
-        },
+        metadata,
       });
     },
     create: async () => {

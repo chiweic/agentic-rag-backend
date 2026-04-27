@@ -5,6 +5,7 @@ import { useLangGraphRuntime } from "@assistant-ui/react-langgraph";
 import { EventsScopeContext } from "@/components/assistant-ui/events-welcome";
 import { Thread } from "@/components/assistant-ui/thread";
 import { createThread, getThreadState, sendMessage } from "@/lib/chatApi";
+import { consumeVoiceInputFlag } from "@/lib/voiceInput";
 
 /**
  * `/events` — event-recommendations Thread chat (features_v2.md §4a).
@@ -43,11 +44,13 @@ const useEventsRuntime = () => {
     stream: async function* (messages, { initialize, command }) {
       const { externalId } = await initialize();
       if (!externalId) throw new Error("Events thread missing");
+      const metadata: Record<string, unknown> = { source_type: "events" };
+      if (consumeVoiceInputFlag()) metadata.input_mode = "voice";
       yield* sendMessage({
         threadId: externalId,
         messages,
         command,
-        metadata: { source_type: "events" },
+        metadata,
       });
     },
     create: async () => {

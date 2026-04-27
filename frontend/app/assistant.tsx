@@ -26,6 +26,7 @@ import {
   setTokenResolver as setAdapterToken,
   threadListAdapter,
 } from "@/lib/threadListAdapter";
+import { consumeVoiceInputFlag } from "@/lib/voiceInput";
 
 /** Fetch the access token from the server-side Logto session. */
 async function fetchAccessToken(): Promise<string | null> {
@@ -91,10 +92,14 @@ function useLangGraphRuntimeHook() {
 
       activeThreadIdRef.current = externalId;
       clearFollowupSuggestions(externalId);
+      const metadata = consumeVoiceInputFlag()
+        ? { input_mode: "voice" }
+        : undefined;
       yield* sendMessage({
         threadId: externalId,
         messages,
         command,
+        metadata,
       });
     },
     create: async () => {

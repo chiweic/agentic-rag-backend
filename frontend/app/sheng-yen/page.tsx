@@ -5,6 +5,7 @@ import { useLangGraphRuntime } from "@assistant-ui/react-langgraph";
 import { ShengYenScopeContext } from "@/components/assistant-ui/sheng-yen-welcome";
 import { Thread } from "@/components/assistant-ui/thread";
 import { createThread, getThreadState, sendMessage } from "@/lib/chatApi";
+import { consumeVoiceInputFlag } from "@/lib/voiceInput";
 
 /**
  * `/sheng-yen` — 聖嚴師父身影 Thread chat (features_v3.md §1).
@@ -42,11 +43,15 @@ const useShengYenRuntime = () => {
     stream: async function* (messages, { initialize, command }) {
       const { externalId } = await initialize();
       if (!externalId) throw new Error("Sheng-yen thread missing");
+      const metadata: Record<string, unknown> = {
+        source_types: [...SOURCE_TYPES],
+      };
+      if (consumeVoiceInputFlag()) metadata.input_mode = "voice";
       yield* sendMessage({
         threadId: externalId,
         messages,
         command,
-        metadata: { source_types: [...SOURCE_TYPES] },
+        metadata,
       });
     },
     create: async () => {

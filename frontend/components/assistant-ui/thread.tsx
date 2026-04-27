@@ -52,6 +52,7 @@ import {
 import { StarterSuggestions } from "@/components/assistant-ui/starter-suggestions";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { VoiceInputButton } from "@/components/assistant-ui/voice-input-button";
 import {
   useIsWhatsNewScope,
   WhatsNewWelcome,
@@ -204,34 +205,37 @@ const ComposerAction: FC = () => {
   return (
     <div className="aui-composer-action-wrapper relative flex items-center justify-between">
       <ComposerAddAttachment />
-      <AuiIf condition={(s) => !s.thread.isRunning}>
-        <ComposerPrimitive.Send asChild>
-          <TooltipIconButton
-            tooltip="傳送訊息"
-            side="bottom"
-            type="button"
-            variant="default"
-            size="icon"
-            className="aui-composer-send size-8 rounded-full"
-            aria-label="傳送訊息"
-          >
-            <ArrowUpIcon className="aui-composer-send-icon size-4" />
-          </TooltipIconButton>
-        </ComposerPrimitive.Send>
-      </AuiIf>
-      <AuiIf condition={(s) => s.thread.isRunning}>
-        <ComposerPrimitive.Cancel asChild>
-          <Button
-            type="button"
-            variant="default"
-            size="icon"
-            className="aui-composer-cancel size-8 rounded-full"
-            aria-label="停止生成"
-          >
-            <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
-          </Button>
-        </ComposerPrimitive.Cancel>
-      </AuiIf>
+      <div className="flex items-center gap-1">
+        <AuiIf condition={(s) => !s.thread.isRunning}>
+          <VoiceInputButton />
+          <ComposerPrimitive.Send asChild>
+            <TooltipIconButton
+              tooltip="傳送訊息"
+              side="bottom"
+              type="button"
+              variant="default"
+              size="icon"
+              className="aui-composer-send size-8 rounded-full"
+              aria-label="傳送訊息"
+            >
+              <ArrowUpIcon className="aui-composer-send-icon size-4" />
+            </TooltipIconButton>
+          </ComposerPrimitive.Send>
+        </AuiIf>
+        <AuiIf condition={(s) => s.thread.isRunning}>
+          <ComposerPrimitive.Cancel asChild>
+            <Button
+              type="button"
+              variant="default"
+              size="icon"
+              className="aui-composer-cancel size-8 rounded-full"
+              aria-label="停止生成"
+            >
+              <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
+            </Button>
+          </ComposerPrimitive.Cancel>
+        </AuiIf>
+      </div>
     </div>
   );
 };
