@@ -264,18 +264,12 @@ async def run_stream(
                 title=first_user_msg.content[:80],
             )
 
-    langfuse_config = get_langfuse_config(
-        user_id=user.user_id,
-        session_id=thread_id,
-        trace_name="thread-run",
-        tags=["thread"],
-    )
-
     source_type = None
     source_types: list[str] | None = None
     scope_record_id = None
     scope_source_type = None
     generate_variant: str | None = None
+    input_mode: str | None = None
     if request.metadata and isinstance(request.metadata, dict):
         source_type = request.metadata.get("source_type")
         raw_sources = request.metadata.get("source_types")
@@ -289,6 +283,19 @@ async def run_stream(
         raw_variant = request.metadata.get("generate_variant")
         if isinstance(raw_variant, str) and raw_variant:
             generate_variant = raw_variant
+        raw_input_mode = request.metadata.get("input_mode")
+        if isinstance(raw_input_mode, str) and raw_input_mode:
+            input_mode = raw_input_mode
+
+    tags = ["thread"]
+    if input_mode == "voice":
+        tags.append("voice")
+    langfuse_config = get_langfuse_config(
+        user_id=user.user_id,
+        session_id=thread_id,
+        trace_name="thread-run",
+        tags=tags,
+    )
 
     from app.rag import current_rag_service
 

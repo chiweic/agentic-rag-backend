@@ -440,6 +440,61 @@ async def test_threads_generate_variant_defaults_to_none(client, fake_rag_servic
 
 
 @pytest.mark.asyncio
+async def test_threads_input_mode_voice_appends_voice_tag(client, monkeypatch):
+    """v5 §1: metadata.input_mode = "voice" causes the Langfuse trace to
+    carry a `voice` tag alongside the existing `thread` tag."""
+    from app.api import threads as threads_module
+
+    captured: list[dict] = []
+
+    def _capture(**kwargs):
+        captured.append(kwargs)
+        # Return a benign config so the run still streams.
+        return {"callbacks": [], "metadata": {}, "_langfuse_handler": None}
+
+    monkeypatch.setattr(threads_module, "get_langfuse_config", _capture)
+
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={
+            "input": {"messages": [{"role": "user", "content": "hi"}]},
+            "metadata": {"input_mode": "voice"},
+        },
+    )
+    assert resp.status_code == 200
+    assert len(captured) == 1
+    assert captured[0]["tags"] == ["thread", "voice"]
+
+
+@pytest.mark.asyncio
+async def test_threads_no_input_mode_omits_voice_tag(client, monkeypatch):
+    """Default path: no input_mode metadata → only the existing `thread` tag,
+    no `voice`."""
+    from app.api import threads as threads_module
+
+    captured: list[dict] = []
+
+    def _capture(**kwargs):
+        captured.append(kwargs)
+        return {"callbacks": [], "metadata": {}, "_langfuse_handler": None}
+
+    monkeypatch.setattr(threads_module, "get_langfuse_config", _capture)
+
+    resp = await client.post("/threads", json={})
+    thread_id = resp.json()["thread_id"]
+
+    resp = await client.post(
+        f"/threads/{thread_id}/runs/stream",
+        json={"input": {"messages": [{"role": "user", "content": "hi"}]}},
+    )
+    assert resp.status_code == 200
+    assert captured[0]["tags"] == ["thread"]
+
+
+@pytest.mark.asyncio
 async def test_recommendations_accepts_news_and_video_ddmmedia1321(client, monkeypatch):
     """v4 allowlist extension — news + video_ddmmedia1321 pass
     validation (the 6-corpus set the /whats-new tab uses)."""
