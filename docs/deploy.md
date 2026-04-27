@@ -244,7 +244,9 @@ docker compose up -d backend
 
 **Touchpoints**: [Dockerfile](/mnt/data/backend/Dockerfile), [.dockerignore](/mnt/data/backend/.dockerignore), [docker-compose.yml](/mnt/data/backend/docker-compose.yml), [scripts/build-backend-image.sh](/mnt/data/backend/scripts/build-backend-image.sh).
 
-**Open follow-up**: Langfuse OTEL trace export from inside the container is returning 401 (`Failed to export span batch code: 401`). The container reaches Langfuse fine (no more "connection reset" — that was a network issue resolved by the changpt_net attachment); auth is the new problem. Same `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY` as the host uvicorn used (which worked), so probably an OTEL endpoint or auth-header difference Langfuse v3 cares about. Chat works fine; only trace observability is degraded. Triage as a small follow-up commit.
+**Resolved follow-ups:**
+
+- **Langfuse OTEL 401 → fixed in `3075b8e`.** Root cause: `.env` had `LANGFUSE_SECRET_KEY="sk-lf-..."` with double quotes. python-dotenv (host dev uvicorn) silently strips quotes; `docker --env-file` (compose) passes them through literally — OTEL exporter sent quoted values in Basic Auth → 401. Same shape as the earlier `RETRIEVAL_BACKEND=milvus # comment` issue; both now warned against in `.env.example`.
 
 ### A7. Milvus reachable from deployed backend ⬜
 
@@ -341,6 +343,41 @@ Fix shape: a `handle401(res)` helper imported by [threadListAdapter.ts](/mnt/dat
 Estimated ~30 lines + a one-shot QA pass. Low-risk, contained.
 
 **Touchpoints**: 7 lib files, no backend changes.
+
+### B9. langgraph-postgres startup-noise: bogus `user "postgres"` auth attempts ⬜
+
+**Symptom**: every time the backend container starts/restarts, `langgraph-postgres` logs 3 quick `FATAL: password authentication failed for user "postgres"` / `Role "postgres" does not exist` entries. Real backend connections (user `langgraph`) succeed in parallel — production isn't affected.
+
+**Why it's safe to defer**:
+- Auth is correctly rejecting (no data exposed)
+- Only happens at container start, not during normal traffic
+- Volume is small (a few entries per restart)
+- Real connections work fine (chat / threads CRUD / retrieval all green)
+
+**Suspected source**: a Python library inside the backend image is doing a startup probe with the default postgres URI (`postgresql://postgres@localhost/postgres`) before our `POSTGRES_URI` override kicks in. Likely candidates: `langgraph-checkpoint-postgres` schema-migration probe, psycopg pool warmup, or a Langfuse SDK collector setup.
+
+**To trace when curiosity strikes** (~30 min):
+```bash
+# Enable connection logging (each statement on its own — ALTER SYSTEM
+# can't run inside a tx block):
+docker exec langgraph-postgres psql -U langgraph -d langgraph -c \
+  "ALTER SYSTEM SET log_connections = 'on';"
+docker exec langgraph-postgres psql -U langgraph -d langgraph -c \
+  "SELECT pg_reload_conf();"
+
+# Restart backend so the noise reproduces:
+docker compose restart backend
+
+# Read the full log entry — should now include client IP + the
+# offending library's connection string.
+docker logs langgraph-postgres --since 1m | grep -E "connection|password"
+
+# Trace the IP back to the calling process inside the container,
+# then either configure the library to use POSTGRES_URI or silence
+# its probe.
+```
+
+**Touchpoints**: tracing only — fix depends on what the trace reveals.
 
 ---
 
