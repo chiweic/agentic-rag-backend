@@ -194,17 +194,57 @@ Copy + fill for the deployment target. Confirm pydantic-settings `extra="ignore"
 
 **Touchpoints**: env only (`POSTGRES_URI`). Verify `thread_metadata` and checkpointer tables land on first boot.
 
-### A6. rag_bot packaging ⬜
+### A6. Backend dockerization (rag_bot vendoring + dev/prod separation) ✅
 
-`rag_bot` is installed via `pip install -e /mnt/data/rag_bot` today — path-specific. The deployment host won't have that path. Options:
+**Done 2026-04-27.** Backend now runs as a Docker container with vendored `rag_bot`. The host uvicorn that previously served prod (with `--reload`, blowing up every time anyone touched a file) is retired. Local dev uses a separate uvicorn on a different port.
 
-- Publish `rag_bot` to a private PyPI / a git ref, install via `pip install rag_bot@git+…`.
-- Vendor it into the deployment image (monorepo-style, single Dockerfile that COPYs both).
-- Keep it editable but COPY the rag_bot source into the build context.
+**Architecture:**
 
-Easiest first pass: git-ref install in requirements.
+- **Production**: `backend-v2` container on port `8082`, defined in [docker-compose.yml](/mnt/data/backend/docker-compose.yml). Frozen image, no `--reload`, joins `changpt_net`. The frontend container at `:3100` reaches it via `host.docker.internal:8082` (unchanged from before — only the listener changed from a host process to a container).
+- **Local dev**: `cd /mnt/data/backend && uvicorn app.main:app --reload --port 8088` (host process, editable rag_bot install via `pip install -e /mnt/data/rag_bot[langchain]`). Independent process on a different port; never affects prod.
 
-**Touchpoints**: `pyproject.toml` deps, deployment image definition (not yet written).
+**Image build pipeline** ([scripts/build-backend-image.sh](/mnt/data/backend/scripts/build-backend-image.sh)):
+
+1. Snapshots `/mnt/data/rag_bot` into `vendor/rag_bot/` via `rsync` (excludes `data/`, `.venv/`, `.git/`, `__pycache__/` — `data/` is bind-mounted at runtime).
+2. Tier 1 gates:
+   - **A**: backend pytest passes against the vendored rag_bot in the host venv
+   - **B**: `docker build` succeeds (multi-stage, CPU-only PyTorch — image is ~2.3 GB instead of ~9 GB)
+   - **C**: candidate container responds to `/health` on test port `8089` within 30 s
+3. On all-green: tags candidate as `:latest`, demotes previous `:latest` to `:previous`. Otherwise leaves `:latest` untouched and exits non-zero.
+4. Image tag: `<date>-rag-<rag_bot-sha>-be-<backend-sha>` (immutable, never garbage-collected unless `docker image prune`).
+
+Tier 2/3 gates (rag_bot pytest, partner_api E2E, retrieval recall, latency budget) are documented in the script header — easy to add as the project matures.
+
+**Critical constraint discovered during cutover**: two backend processes can't run side-by-side against the same Postgres because `init_store()` runs `ALTER TABLE thread_metadata` (needs ACCESS EXCLUSIVE), which deadlocks on any other session holding even a `SELECT`. Cutover MUST stop the previous backend before starting the new one. Window of unavailability ≈ a few seconds.
+
+**Cutover procedure** (every promotion):
+
+```bash
+cd /mnt/data/backend
+bash scripts/build-backend-image.sh           # gates A/B/C; tags :latest on green
+docker compose up -d backend                  # cutover (~5–10 s downtime)
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  https://app.changpt.org/api/health          # confirm 200
+```
+
+**Rollback** (if a freshly promoted image breaks something prod-side):
+
+```bash
+docker tag backend-v2:previous backend-v2:latest
+docker compose up -d backend
+```
+
+`:previous` is the prior `:latest`, automatically maintained by the build script. For older releases (>1 step back), every successful build leaves its `<date>-rag-X-be-Y` tag in place forever.
+
+**rag_bot promotion path** (separate from code changes to backend itself):
+
+- Develop rag_bot freely against the local dev uvicorn at `:8088` (editable install reloads on every save — fast loop unchanged).
+- When stable, run `bash scripts/build-backend-image.sh` from the backend dir. The script snapshots `/mnt/data/rag_bot` at that moment into `vendor/`, runs the gates, and either passes or aborts. No changes to rag_bot's repo are needed.
+- `docker compose up -d backend` to roll out.
+
+**Touchpoints**: [Dockerfile](/mnt/data/backend/Dockerfile), [.dockerignore](/mnt/data/backend/.dockerignore), [docker-compose.yml](/mnt/data/backend/docker-compose.yml), [scripts/build-backend-image.sh](/mnt/data/backend/scripts/build-backend-image.sh).
+
+**Open follow-up**: Langfuse OTEL trace export from inside the container is returning 401 (`Failed to export span batch code: 401`). The container reaches Langfuse fine (no more "connection reset" — that was a network issue resolved by the changpt_net attachment); auth is the new problem. Same `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY` as the host uvicorn used (which worked), so probably an OTEL endpoint or auth-header difference Langfuse v3 cares about. Chat works fine; only trace observability is degraded. Triage as a small follow-up commit.
 
 ### A7. Milvus reachable from deployed backend ⬜
 

@@ -18,6 +18,44 @@ services:
       timeout: 5s
       retries: 10
 
+  backend:
+    # Image is built+tagged by scripts/build-backend-image.sh after the Tier 1
+    # promotion gates pass. Compose does NOT build it (build: would skip the
+    # gates). Always references :latest, which the script only updates on a
+    # green build; rollback is `docker tag backend-v2:previous backend-v2:latest`
+    # then `docker compose up -d backend`.
+    image: backend-v2:latest
+    container_name: backend-v2
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Joined to changpt_net so the backend reaches milvus / TEI / langfuse /
+    # langgraph-postgres by their service names. `default` keeps it on
+    # backend's own compose network too.
+    networks: [default, changpt_net]
+    ports:
+      # Same port the frontend container's LANGGRAPH_API_URL points at via
+      # host.docker.internal. Don't change without also updating
+      # frontend/docker-compose.yml + frontend/.env.local.
+      - "8082:8082"
+    env_file: .env
+    environment:
+      # Override host-relative URLs in .env with changpt_net service names.
+      # The .env is shared with the local-dev uvicorn workflow at :8088,
+      # which still uses localhost references — these container-only values
+      # live HERE so .env doesn't have to fork.
+      POSTGRES_URI: postgresql://langgraph:langgraph@langgraph-postgres:5432/langgraph
+      MILVUS_HOST: milvus-standalone
+      EMBEDDING_BASE_URL: http://tei-embedder:80
+      RERANK_ENDPOINT: http://tei-reranker:80/rerank
+      LANGFUSE_BASE_URL: http://langfuse-langfuse-web-1:3000
+      DATA_ROOT: /data
+    volumes:
+      # rag_bot data corpus (~840 MB) — too big for the image, bind-mounted
+      # read-only. Updated out-of-band by rag_bot's data ingestion pipeline.
+      - /mnt/data/rag_bot/data:/data:ro
+
 volumes:
   pgdata:
 

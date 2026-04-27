@@ -28,3 +28,7 @@ frontend-v1/
 # Standalone Logto-RN sign-in/out POC (kept on disk for ad-hoc reruns;
 # findings already captured in mobile-v3/README.md "Known limitation").
 mobile-auth-poc/
+
+# Backend Docker build context — scripts/build-backend-image.sh snapshots
+# rag_bot here at build time. Ephemeral, recreated fresh each build.
+vendor/

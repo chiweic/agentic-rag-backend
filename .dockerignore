@@ -1,0 +1,69 @@
+# Backend Docker build context. Exclude everything not needed inside the
+# image. The Dockerfile does explicit `COPY pyproject.toml`, `COPY app`, and
+# `COPY vendor/rag_bot`, so nothing else from the repo ends up in the image
+# regardless — but trimming the build context shrinks the upload to the daemon
+# significantly (frontend/ alone is hundreds of MB).
+
+# Python build/runtime junk
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+
+# Sibling concerns — each has its own image / project / lifecycle
+frontend/
+mobile-v1/
+mobile-v2/
+mobile-v3/
+mobile-auth-poc/
+mcp-retrieval/
+examples/
+exp/
+frontend-v1/
+data/
+
+# Documentation — not needed inside the runtime image
+docs/
+
+# Tests — gated outside the image (Gate A in scripts/build-backend-image.sh)
+tests/
+
+# VCS, editor, agent, dev-tooling state
+.git/
+.gitignore
+.gitattributes
+.editorconfig
+.pre-commit-config.yaml
+.codex
+.claude/
+.goose/
+.qwen/
+.windsurf/
+.mcp.json
+
+# Secrets — NEVER bake env into the image; comes from compose's env_file at runtime
+.env
+.env.*
+
+# Container-build artifacts (don't recurse into ourselves)
+Dockerfile
+.dockerignore
+
+# Compose files + dev scripts — irrelevant to image contents
+docker-compose.yml
+scripts/
+
+# vendor/rag_bot dev junk. The build script already strips these before
+# invoking docker build, but be defensive — if someone runs `docker build`
+# manually, these still get filtered out.
+vendor/rag_bot/.venv/
+vendor/rag_bot/.git/
+vendor/rag_bot/.pytest_cache/
+vendor/rag_bot/__pycache__/
+vendor/rag_bot/**/__pycache__/
+vendor/rag_bot/*.egg-info/
