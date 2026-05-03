@@ -105,6 +105,169 @@ class RagBotService:
         self._cache_hits(protocol_hits, hits)
         return protocol_hits
 
+    def multi_search(
+        self,
+        query: str,
+        *,
+        source_types: list[str] | None = None,
+        limit: int | None = None,
+    ) -> list[RetrievalHit]:
+        """Query the unified Milvus collection (features_v6 Phase 0d).
+
+        Direct Milvus search → optional in-Milvus filter on `source_type` if
+        the caller scoped via `source_types` → in-process rerank →
+        truncate to `limit`. Bypasses `DataSourceManager` because the
+        unified collection isn't keyed on a single source_type and isn't
+        in the source registry.
+        """
+        from rag_bot.data_sources.models import (
+            Citation as RagBotCitation,
+        )
+        from rag_bot.data_sources.models import (
+            RetrievalChunk,
+            RetrievalRecord,
+        )
+        from rag_bot.rerank import rerank_hits as rag_bot_rerank
+
+        unified_name = self._settings.milvus_unified_collection
+        if not unified_name:
+            raise RuntimeError(
+                "multi_search called but settings.milvus_unified_collection is unset. "
+                "Set MILVUS_UNIFIED_COLLECTION in env (built by "
+                "tmp/eval_v6_unified/build_unified_collection.py)."
+            )
+
+        client = self._unified_milvus_client()
+        embeddings = self._unified_embeddings()
+
+        # Build optional Milvus filter expression for source-type narrowing.
+        # Empty / None means "all corpora" (no filter).
+        expr: str | None = None
+        if source_types:
+            quoted = ", ".join(f'"{st}"' for st in source_types)
+            expr = f"source_type in [{quoted}]"
+
+        candidate_k = max(self._settings.multi_search_candidate_k, limit or 0)
+        final_limit = limit or self._settings.retrieval_limit
+
+        qv = embeddings.embed_query(query)
+        results = client.search(
+            collection_name=unified_name,
+            data=[qv],
+            anns_field="vector",
+            limit=candidate_k,
+            output_fields=_UNIFIED_OUTPUT_FIELDS,
+            search_params={"metric_type": "COSINE", "params": {"ef": 100}},
+            filter=expr or "",
+        )
+        rows = results[0] if results else []
+
+        # Build rag_bot-native hits so rerank_hits can score them.
+        native_hits: list[Any] = []
+        for row in rows:
+            entity = row.get("entity") if isinstance(row, dict) else dict(row)
+            if not isinstance(entity, dict):
+                entity = {}
+            score = float(row.get("distance") or row.get("score") or 0.0)
+            chunk = RetrievalChunk(
+                id=str(entity.get("chunk_id") or ""),
+                record_id=str(entity.get("record_id") or ""),
+                source_type=str(entity.get("source_type") or ""),
+                source_url=str(entity.get("source_url") or ""),
+                title=str(entity.get("title") or ""),
+                publish_date=entity.get("publish_date") or None,
+                chunk_index=int(entity.get("chunk_index") or 0),
+                text=str(entity.get("text") or ""),
+                metadata={
+                    k: entity.get(k) or ""
+                    for k in (
+                        "book_title",
+                        "chapter_title",
+                        "category",
+                        "attribution",
+                        "venue_name",
+                        "series_name",
+                        "unit_name",
+                        "playback_url",
+                        "channel_handle",
+                        "channel_id",
+                    )
+                    if entity.get(k)
+                }
+                | {
+                    k: entity.get(k)
+                    for k in ("start_s", "end_s", "duration_s")
+                    if entity.get(k) is not None
+                },
+            )
+            record = RetrievalRecord(
+                id=chunk.record_id,
+                title=chunk.title,
+                source_type=chunk.source_type,
+                source_url=chunk.source_url,
+                publish_date=chunk.publish_date,
+                body_text=chunk.text,
+                metadata=dict(chunk.metadata),
+            )
+            citation = RagBotCitation(
+                id=chunk.id,
+                title=record.title,
+                source_type=record.source_type,
+                source_url=record.source_url,
+                publish_date=record.publish_date,
+                quote=chunk.text[:220],
+                score=round(score, 4),
+            )
+            from rag_bot.data_sources.models import RetrievalHit as RagBotRetrievalHit
+
+            native_hits.append(
+                RagBotRetrievalHit(score=score, record=record, chunk=chunk, citation=citation)
+            )
+
+        if self._settings.rerank_enabled and native_hits:
+            # Override top_n so the reranker considers the entire candidate
+            # pool — same pattern as rag_bot.rag.sources.cross_source_search.
+            rerank_all = self._rerank_config.model_copy(update={"top_n": len(native_hits)})
+            native_hits = rag_bot_rerank(query, native_hits, rerank_all)
+        native_hits = native_hits[:final_limit]
+
+        protocol_hits = [self._map_hit(h) for h in native_hits]
+        self._cache_hits(protocol_hits, native_hits)
+        return protocol_hits
+
+    # ------------------------------------------------------------------
+    # Lazy clients for multi_search (so rag_bot's other code paths stay
+    # unchanged and we don't hold connections we may never use).
+    # ------------------------------------------------------------------
+    def _unified_milvus_client(self) -> Any:
+        cached = getattr(self, "_unified_client", None)
+        if cached is not None:
+            return cached
+        from pymilvus import MilvusClient
+
+        cfg = self._milvus_config
+        client = MilvusClient(
+            uri=f"http://{cfg.host}:{cfg.port}",
+            db_name=cfg.db_name,
+            user=cfg.user or "",
+            password=cfg.password or "",
+            token=cfg.token or "",
+            secure=cfg.secure,
+            timeout=cfg.timeout,
+        )
+        self._unified_client = client
+        return client
+
+    def _unified_embeddings(self) -> Any:
+        cached = getattr(self, "_unified_embeddings_obj", None)
+        if cached is not None:
+            return cached
+        from rag_bot.embeddings import get_embeddings
+
+        emb = get_embeddings(self._embedding_config)
+        self._unified_embeddings_obj = emb
+        return emb
+
     def get_record_chunks(
         self,
         record_id: str,
@@ -393,6 +556,35 @@ class RagBotService:
                 **refs,
             },
         )
+
+
+# Fields requested from the unified Milvus collection on multi_search.
+# Mirrors the per-source schema (see search_bench_cli.py) so all
+# type-specific metadata (audio playback, venue address, etc.) flows
+# through to citations downstream.
+_UNIFIED_OUTPUT_FIELDS = [
+    "text",
+    "chunk_id",
+    "record_id",
+    "source_type",
+    "source_url",
+    "title",
+    "publish_date",
+    "chunk_index",
+    "book_title",
+    "chapter_title",
+    "category",
+    "attribution",
+    "venue_name",
+    "series_name",
+    "unit_name",
+    "playback_url",
+    "channel_handle",
+    "channel_id",
+    "start_s",
+    "end_s",
+    "duration_s",
+]
 
 
 _LANGUAGE_PROMPT_PREFIX = (

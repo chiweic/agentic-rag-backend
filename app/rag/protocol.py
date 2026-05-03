@@ -48,6 +48,31 @@ class RagService(Protocol):
         """Retrieve relevant hits for the query."""
         ...
 
+    def multi_search(
+        self,
+        query: str,
+        *,
+        source_types: list[str] | None = None,
+        limit: int = 5,
+    ) -> list[RetrievalHit]:
+        """Retrieve relevant hits across multiple corpora, reranked together.
+
+        Implementations should query a single index that holds chunks from
+        every corpus (e.g. rag_bot's `rag_bot_unified_<ts>` Milvus
+        collection) and rerank the candidate pool to surface the
+        cross-corpus best matches.
+
+        `source_types=None` searches every corpus the index covers.
+        Passing a list filters retrieval to those source_types only — used
+        by the `Auto` chip's manual override so a power user can scope
+        without forcing the legacy single-corpus path.
+
+        Returned hits carry full `metadata.source_type`, so callers
+        downstream (chip-label derivation, follow-up chip selection) can
+        inspect the corpus mix without re-querying.
+        """
+        ...
+
     def get_record_chunks(
         self,
         record_id: str,

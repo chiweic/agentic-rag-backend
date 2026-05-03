@@ -166,6 +166,29 @@ def retrieve(state: AgentState, config: RunnableConfig) -> dict:
             "citations": [h.model_dump(mode="json") for h in hits],
         }
 
+    # 4. Unified mode (features_v6 magic-wand). When the request didn't
+    #    pin a source, didn't pass a source_types list, isn't deep-dive,
+    #    AND the operator has flipped retrieval_auto_mode on, retrieve
+    #    via the unified Milvus collection. Single nearest-neighbor
+    #    search across all corpora + rerank — Stage 2d in features_v6.md.
+    if settings.retrieval_auto_mode == "unified" and not state.source_type:
+        hits = service.multi_search(query, limit=settings.retrieval_limit)
+        log.info(
+            "retrieve | unified | collection=%s | query=%r | %d hits",
+            settings.milvus_unified_collection,
+            query[:60],
+            len(hits),
+        )
+        return {
+            "query": query,
+            # Hits span multiple corpora; let downstream chip-label
+            # derivation read source_type from each citation's metadata.
+            "source_type": None,
+            "retrieval_context": [h.text for h in hits],
+            "retrieved_chunk_ids": [h.chunk_id for h in hits],
+            "citations": [h.model_dump(mode="json") for h in hits],
+        }
+
     source_type = state.source_type or settings.default_source_type
     hits = service.search(query, source_type=source_type, limit=settings.retrieval_limit)
     rerank_marker = (
