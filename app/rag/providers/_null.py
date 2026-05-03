@@ -23,6 +23,15 @@ class NullRagService:
     ) -> list[RetrievalHit]:
         return []
 
+    def multi_search(
+        self,
+        query: str,
+        *,
+        source_types: list[str] | None = None,
+        limit: int = 5,
+    ) -> list[RetrievalHit]:
+        return []
+
     def get_record_chunks(
         self,
         record_id: str,

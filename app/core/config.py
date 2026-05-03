@@ -42,6 +42,24 @@ class Settings(BaseSettings):
     milvus_secure: bool = False
     milvus_timeout: float = 30.0
 
+    # Magic-wand unified retrieval (features_v6 Phase 0d).
+    # When `retrieval_auto_mode="unified"` AND no per-turn scope is
+    # provided (`source_type`, `source_types`, or scope_record_id all
+    # absent), the retrieve node calls `service.multi_search` against the
+    # collection named in `milvus_unified_collection`. Default `off`
+    # preserves today's per-tab behavior — this gates rollout.
+    retrieval_auto_mode: Literal["off", "unified"] = "off"
+    # Name of the unified Milvus collection (e.g.
+    # "rag_bot_unified_20260503t031539z"). Required when
+    # retrieval_auto_mode="unified"; ignored otherwise. The collection is
+    # built by tmp/eval_v6_unified/build_unified_collection.py and lives
+    # in milvus_db_name alongside the per-source collections.
+    milvus_unified_collection: str | None = None
+    # Pre-rerank candidate pool size for multi_search. 50 was the value
+    # used in Stage 2d eval (matches the empirical sweet spot — bigger
+    # pools didn't move quality enough to justify the rerank cost).
+    multi_search_candidate_k: int = 50
+
     # Rerank service. Only used when rerank_enabled=true.
     rerank_endpoint: str = "http://localhost:8081/rerank"
     rerank_top_n: int = 5
